@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS faiss_mappings (
     FOREIGN KEY(embedding_id) REFERENCES embeddings(id)
 );
 
+CREATE TABLE IF NOT EXISTS state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_faiss_mappings_created_at ON faiss_mappings(created_at);
 """
