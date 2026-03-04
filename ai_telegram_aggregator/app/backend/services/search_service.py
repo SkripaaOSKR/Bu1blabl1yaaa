@@ -4,8 +4,8 @@ import numpy as np
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.semantic.embedding_model import EmbeddingModel
-from app.semantic.faiss_index import FaissStore
+from app.backend.services.faiss_store import FaissStore
+from app.backend.services.nlp import EmbeddingModel
 
 
 class SearchService:

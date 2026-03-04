@@ -12,13 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.collector.telegram_client import CollectedMessage, TelegramCollector
 from app.config import get_settings
-from app.processing.duplicate_engine import DuplicateEngine
-from app.processing.merge_engine import MergeEngine
-from app.processing.preprocessor import Preprocessor
-from app.processing.spam_filter import SpamFilter
-from app.processing.tagger import TagGenerator
-from app.semantic.embedding_model import EmbeddingModel
-from app.semantic.faiss_index import FaissStore
+from app.backend.services.faiss_store import FaissStore
+from app.backend.services.nlp import DuplicateEngine, EmbeddingModel, MergeEngine, Preprocessor, SpamFilter, TagGenerator
 
 logger = logging.getLogger(__name__)
 
