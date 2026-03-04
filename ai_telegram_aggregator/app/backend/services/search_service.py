@@ -4,8 +4,8 @@ import numpy as np
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.backend.services.faiss_store import FaissStore
-from app.backend.services.nlp import EmbeddingModel
+from app.semantic.embedding_model import EmbeddingModel
+from app.semantic.faiss_index import FaissStore
 
 
 class SearchService:
@@ -32,6 +32,7 @@ class SearchService:
                 WHERE m.embedding_id = ANY(:ids)
                   AND (:source_id IS NULL OR m.source_id=:source_id)
                   AND (:tag IS NULL OR t.name=:tag)
+                ORDER BY m.created_at DESC
                 LIMIT :limit
                 """
             ),
@@ -43,6 +44,4 @@ class SearchService:
             item = dict(row._mapping)
             item["similarity"] = score_map.get(int(item["embedding_id"]), 0.0)
             result.append(item)
-
-        result.sort(key=lambda x: x["similarity"], reverse=True)
-        return result[:limit]
+        return result

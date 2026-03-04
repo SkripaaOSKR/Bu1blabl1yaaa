@@ -1,12 +1,5 @@
-const initUnsafe = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe) || {};
-const authPayload = {
-  auth_date: initUnsafe.auth_date,
-  query_id: initUnsafe.query_id,
-  user: initUnsafe.user,
-  hash: initUnsafe.hash,
-};
-
-const headers = { 'X-Telegram-Auth': JSON.stringify(authPayload), 'Content-Type': 'application/json' };
+const ADMIN_ID = new URLSearchParams(window.location.search).get('uid') || '0';
+const headers = { 'X-Admin-User-Id': ADMIN_ID, 'Content-Type': 'application/json' };
 
 function show(id) {
   document.querySelectorAll('section').forEach((s) => s.classList.remove('active'));

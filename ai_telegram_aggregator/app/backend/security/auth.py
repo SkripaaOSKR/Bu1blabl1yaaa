@@ -20,27 +20,14 @@ def verify_telegram_login(payload: dict[str, Any]) -> bool:
     return hmac.compare_digest(expected, str(payload.get("hash", "")))
 
 
-async def telegram_auth_guard(x_telegram_auth: str = Header(...)) -> int:
-    try:
-        payload = json.loads(x_telegram_auth)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=401, detail="Invalid telegram auth payload") from exc
-
-    if not verify_telegram_login(payload):
-        raise HTTPException(status_code=401, detail="Invalid telegram auth hash")
-
-    user_payload = payload.get("user")
-    if isinstance(user_payload, str):
-        try:
-            user_payload = json.loads(user_payload)
-        except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=401, detail="Invalid telegram auth user") from exc
-
-    if not isinstance(user_payload, dict) or "id" not in user_payload:
-        raise HTTPException(status_code=401, detail="Missing telegram user")
-
-    user_id = int(user_payload["id"])
-    if user_id not in settings.admin_ids:
+async def admin_guard(x_admin_user_id: int = Header(...)) -> int:
+    if x_admin_user_id not in settings.admin_ids:
         raise HTTPException(status_code=403, detail="Forbidden")
+    return x_admin_user_id
 
-    return user_id
+
+async def telegram_auth_guard(x_telegram_auth: str = Header(...)) -> dict[str, Any]:
+    payload = json.loads(x_telegram_auth)
+    if not verify_telegram_login(payload):
+        raise HTTPException(status_code=401, detail="Invalid telegram auth")
+    return payload

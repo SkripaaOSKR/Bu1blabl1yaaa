@@ -12,8 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.collector.telegram_client import CollectedMessage, TelegramCollector
 from app.config import get_settings
-from app.backend.services.faiss_store import FaissStore
-from app.backend.services.nlp import DuplicateEngine, EmbeddingModel, MergeEngine, Preprocessor, SpamFilter, TagGenerator
+from app.processing.duplicate_engine import DuplicateEngine
+from app.processing.merge_engine import MergeEngine
+from app.processing.preprocessor import Preprocessor
+from app.processing.spam_filter import SpamFilter
+from app.processing.tagger import TagGenerator
+from app.semantic.embedding_model import EmbeddingModel
+from app.semantic.faiss_index import FaissStore
 
 logger = logging.getLogger(__name__)
 
@@ -34,30 +39,6 @@ class ProcessingService:
         self.merger = MergeEngine(self.settings.merge_max_chars)
         self.tagger = TagGenerator()
         self.cancelled = False
-        self._initialized = False
-
-    async def ensure_initialized(self) -> None:
-        if self._initialized:
-            return
-        await self.sync_faiss_index()
-        self._initialized = True
-
-    async def sync_faiss_index(self) -> None:
-        db_count_row = await self.db.execute(text("SELECT COUNT(*) FROM embeddings"))
-        db_count = int(db_count_row.scalar() or 0)
-        faiss_count = self.faiss.ntotal
-        if db_count == faiss_count:
-            return
-
-        logger.warning("FAISS desync detected: db=%s faiss=%s. Rebuilding index.", db_count, faiss_count)
-        rows = await self.db.execute(text("SELECT id, vector FROM embeddings ORDER BY id"))
-        all_rows = rows.fetchall()
-        self.faiss.index.reset()
-        if all_rows:
-            ids = np.asarray([int(r.id) for r in all_rows], dtype=np.int64)
-            vectors = np.vstack([np.frombuffer(r.vector, dtype=np.float32) for r in all_rows]).astype(np.float32)
-            self.faiss.add_with_ids(vectors, ids)
-        self.faiss.persist()
 
     async def _load_source_map(self) -> dict[str, int]:
         rows = await self.db.execute(text("SELECT id, channel FROM sources WHERE is_active=TRUE ORDER BY priority,id"))
@@ -70,23 +51,15 @@ class ProcessingService:
             return found.last_processed_timestamp.astimezone(timezone.utc)
         return datetime.now(timezone.utc) - timedelta(hours=hours or 24)
 
-    async def _encode_chunked(self, texts: list[str]) -> np.ndarray:
-        vectors: list[np.ndarray] = []
-        chunk_size = max(1, self.settings.embedding_batch_size)
-        for i in range(0, len(texts), chunk_size):
-            chunk = texts[i : i + chunk_size]
-            chunk_vectors = await asyncio.to_thread(self.embedding_model.encode, chunk)
-            vectors.append(chunk_vectors)
-        if not vectors:
-            return np.empty((0, 384), dtype=np.float32)
-        return np.vstack(vectors)
-
-    async def _save_processed(self, source_id: int, msg: CollectedMessage, language: str, vector: np.ndarray, is_dup: bool, score: float, tags: list[str]) -> tuple[int, bool]:
+    async def _save_processed(self, source_id: int, msg: CollectedMessage, cleaned: str, language: str, vector: np.ndarray, is_dup: bool, score: float, tags: list[str]) -> tuple[int, bool]:
         try:
             await self.db.execute(text("BEGIN"))
-            emb_row = await self.db.execute(text("INSERT INTO embeddings(vector) VALUES (:v) RETURNING id"), {"v": vector.tobytes()})
+            emb_row = await self.db.execute(
+                text("INSERT INTO embeddings(vector) VALUES (:v) RETURNING id"),
+                {"v": vector.tobytes()},
+            )
             emb_id = int(emb_row.fetchone().id)
-            message_row = await self.db.execute(
+            await self.db.execute(
                 text(
                     """
                     INSERT INTO messages(source_id,text,merged_text,created_at,processed_at,embedding_id,language,is_duplicate,is_published,similarity_score,media_group_id)
@@ -106,7 +79,6 @@ class ProcessingService:
                     "mg": msg.media_group_id,
                 },
             )
-            message_id = int(message_row.fetchone().id)
             await self.db.commit()
         except Exception:
             await self.db.rollback()
@@ -123,30 +95,16 @@ class ProcessingService:
                 text(
                     """
                     INSERT INTO message_tags(message_id, tag_id)
-                    SELECT :mid, t.id FROM tags t WHERE t.name=:n
+                    SELECT m.id, t.id FROM messages m, tags t
+                    WHERE m.embedding_id=:eid AND t.name=:n
                     ON CONFLICT DO NOTHING
                     """
                 ),
-                {"mid": message_id, "n": tag},
+                {"eid": emb_id, "n": tag},
             )
-        await self.db.execute(
-            text("UPDATE sources SET total_messages=total_messages+1, duplicate_count=duplicate_count + :dup, last_scan_at=NOW() WHERE id=:id"),
-            {"id": source_id, "dup": 1 if is_dup else 0},
-        )
+        await self.db.execute(text("UPDATE sources SET total_messages=total_messages+1, duplicate_count=duplicate_count + :dup, last_scan_at=NOW() WHERE id=:id"), {"id": source_id, "dup": 1 if is_dup else 0})
         await self.db.commit()
-        return message_id, is_dup
-
-    async def _publish_with_retry(self, collector: TelegramCollector, text_to_publish: str) -> bool:
-        delays = [2, 5, 10]
-        for attempt, delay in enumerate(delays, start=1):
-            try:
-                await collector.publish(self.settings.telegram_publish_channel, text_to_publish)
-                return True
-            except Exception:
-                logger.exception("Publish attempt %s failed", attempt)
-                if attempt < len(delays):
-                    await asyncio.sleep(delay)
-        return False
+        return emb_id, is_dup
 
     async def _process_batch(self, batch: list[tuple[int, CollectedMessage]]) -> tuple[dict[str, list[str]], dict[str, list[int]], datetime | None, int]:
         grouped: dict[str, list[str]] = defaultdict(list)
@@ -168,23 +126,22 @@ class ProcessingService:
         if not prepared:
             return grouped, grouped_message_ids, newest, processed_count
 
-        vectors = await self._encode_chunked([x[2] for x in prepared])
+        vectors = await asyncio.to_thread(self.embedding_model.encode, [x[2] for x in prepared])
         for idx, (source_id, msg, cleaned, language) in enumerate(prepared):
             if self.cancelled:
                 break
             vector = vectors[idx]
             is_dup, score = self.dedupe.find_duplicates(vector)
             tags = self.tagger.generate(cleaned)
-            message_id, _ = await self._save_processed(source_id, msg, language, vector, is_dup, score, tags)
+            emb_id, _ = await self._save_processed(source_id, msg, cleaned, language, vector, is_dup, score, tags)
             key = cleaned if not is_dup else f"dup:{cleaned[:120]}"
             grouped[key].append(cleaned)
-            grouped_message_ids[key].append(message_id)
+            grouped_message_ids[key].append(emb_id)
             processed_count += 1
 
         return grouped, grouped_message_ids, newest, processed_count
 
     async def run_batch(self, hours: int | None = None) -> dict[str, int | str]:
-        await self.ensure_initialized()
         started = time.perf_counter()
         status = "success"
         processed_total = 0
@@ -234,14 +191,9 @@ class ProcessingService:
                 if not self.cancelled:
                     for key, texts in groups.items():
                         published_text = self.merger.merge(texts, ["source"] * len(texts)) if len(texts) > 1 else texts[0]
-                        published = await self._publish_with_retry(collector, published_text)
-                        if not published:
-                            status = "failed"
-                            continue
-                        await self.db.execute(
-                            text("UPDATE messages SET is_published=TRUE WHERE id = ANY(:ids)"),
-                            {"ids": grouped_ids[key]},
-                        )
+                        await collector.publish(self.settings.telegram_publish_channel, published_text)
+                        for emb_id in grouped_ids[key]:
+                            await self.db.execute(text("UPDATE messages SET is_published=TRUE WHERE embedding_id=:id"), {"id": emb_id})
                     await self.db.commit()
         except Exception:
             status = "failed"

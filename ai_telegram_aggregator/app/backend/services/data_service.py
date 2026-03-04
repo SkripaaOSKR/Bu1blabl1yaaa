@@ -37,11 +37,9 @@ class DataService:
         return dict(row.fetchone()._mapping)
 
     async def update_source(self, source_id: int, values: dict) -> None:
-        allowed_fields = {"is_active", "priority", "category", "language"}
-        values = {k: v for k, v in values.items() if k in allowed_fields}
-        if not values:
-            return
         set_parts = [f"{k}=:{k}" for k in values.keys()]
+        if not set_parts:
+            return
         values["id"] = source_id
         await self.db.execute(text(f"UPDATE sources SET {', '.join(set_parts)} WHERE id=:id"), values)
         await self.db.commit()
@@ -144,11 +142,9 @@ class DataService:
         return dict(found._mapping) if found else {}
 
     async def update_settings(self, values: dict) -> None:
-        allowed_fields = {"dedupe_threshold", "merge_enabled", "batch_size", "dedupe_window_days", "max_merge_chars"}
-        values = {k: v for k, v in values.items() if k in allowed_fields}
-        if not values:
-            return
         set_parts = [f"{k}=:{k}" for k in values.keys()]
+        if not set_parts:
+            return
         values["updated_at"] = datetime.now(timezone.utc)
         sql = f"UPDATE settings SET {', '.join(set_parts)}, updated_at=:updated_at WHERE id=1"
         await self.db.execute(text(sql), values)

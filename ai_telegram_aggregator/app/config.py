@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import urlparse
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,12 +38,14 @@ class Settings(BaseSettings):
     dedupe_window_days: int = 14
     merge_max_chars: int = 1800
 
+    sqlite_path: Path = Field(default=DATA_DIR / "aggregator.db")
     faiss_index_path: Path = Field(default=DATA_DIR / "faiss.index")
     analytics_path: Path = Field(default=DATA_DIR / "analytics.json")
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     postgres_dsn: str = "postgresql+asyncpg://news:news@postgres:5432/news"
 
+    api_secret_key: str = "change-me"
     miniapp_base_url: str = "https://example.com/miniapp"
 
     @property
@@ -54,13 +55,6 @@ class Settings(BaseSettings):
     @property
     def admin_ids(self) -> set[int]:
         return {int(item.strip()) for item in self.admin_user_ids.split(",") if item.strip()}
-
-    @property
-    def miniapp_origin(self) -> str:
-        parsed = urlparse(self.miniapp_base_url)
-        if parsed.scheme and parsed.netloc:
-            return f"{parsed.scheme}://{parsed.netloc}"
-        return self.miniapp_base_url
 
 
 @lru_cache(maxsize=1)
