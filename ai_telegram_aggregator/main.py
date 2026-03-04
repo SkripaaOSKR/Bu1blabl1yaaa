@@ -1,6 +1,3 @@
-from app.main import _main
+from app.api_server import app
 
-if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(_main())
+__all__ = ["app"]
