@@ -4,10 +4,10 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.backend.db.session import get_db
-from app.backend.security.auth import telegram_auth_guard
+from app.backend.security.auth import admin_guard
 
 
-def get_admin_user_id(user_id: int = Depends(telegram_auth_guard)) -> int:
+def get_admin_user_id(user_id: int = Depends(admin_guard)) -> int:
     return user_id
 
 

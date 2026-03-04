@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.backend.api.deps import get_admin_user_id, get_session
-from app.backend.db.session import SessionLocal
 from app.backend.models.schemas import ProcessingRunRequest
 from app.backend.services.data_service import DataService
 from app.backend.services.processing_service import ProcessingService
@@ -16,21 +15,15 @@ _running_task: asyncio.Task | None = None
 _running_service: ProcessingService | None = None
 
 
-async def _run_with_own_session(hours: int | None) -> dict:
-    async with SessionLocal() as db:
-        service = ProcessingService(db)
-        global _running_service
-        _running_service = service
-        return await service.run_batch(hours)
-
-
 @router.post("/run")
 async def run_batch(payload: ProcessingRunRequest, db: AsyncSession = Depends(get_session), user_id: int = Depends(get_admin_user_id)) -> dict:
-    global _running_task
+    global _running_task, _running_service
     if _running_task and not _running_task.done():
         raise HTTPException(status_code=409, detail="Run already active")
 
-    _running_task = asyncio.create_task(_run_with_own_session(payload.hours))
+    service = ProcessingService(db)
+    _running_service = service
+    _running_task = asyncio.create_task(service.run_batch(payload.hours))
     await DataService(db).log_action(user_id, "processing.run", payload.model_dump())
     return {"ok": True, "status": "started"}
 
