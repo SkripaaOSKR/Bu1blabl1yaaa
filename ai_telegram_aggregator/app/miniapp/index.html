@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI News Intelligence Admin</title>
+  <style>
+    :root {
+      --bg: #0f1220;
+      --bg-alt: #161a2e;
+      --panel: #1e233d;
+      --panel-2: #252b48;
+      --text: #e7eaf6;
+      --muted: #9ea7c3;
+      --accent: #6f8cff;
+      --danger: #ff6b81;
+      --ok: #4cd38a;
+      --border: #2f365a;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Segoe UI, Roboto, system-ui, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at top right, #1b2250, #0c0f1d 45%);
+      min-height: 100vh;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      background: rgba(14, 18, 33, 0.92);
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+
+    .brand {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+
+    .brand small { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+    .nav { display: flex; flex-direction: column; gap: 8px; }
+    .nav button {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: .2s ease;
+    }
+
+    .nav button:hover,
+    .nav button.active {
+      background: var(--panel);
+      border-color: var(--border);
+    }
+
+    .content { padding: 24px; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    h2 { margin-top: 0; font-size: 24px; }
+    p.subtitle { margin-top: -8px; color: var(--muted); }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .card {
+      background: linear-gradient(160deg, var(--panel), var(--panel-2));
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    .card .label { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    .card .value { font-size: 22px; font-weight: 700; }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+      align-items: center;
+    }
+
+    input, select, textarea {
+      background: #11162d;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px;
+      border-radius: 10px;
+      min-width: 140px;
+    }
+
+    button.action {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    button.action.ghost { background: #2a3154; }
+    button.action.danger { background: var(--danger); }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(20, 24, 42, 0.8);
+    }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid #2a3155; font-size: 13px; }
+    th { color: var(--muted); text-align: left; background: #161c35; position: sticky; top: 0; }
+
+    .chip {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      background: #2b345d;
+    }
+
+    .status-ok { color: var(--ok); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+    pre {
+      background: #11162d;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      overflow: auto;
+    }
+
+    @media (max-width: 960px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar {
+        height: auto;
+        position: static;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .cards { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">AI News Intelligence<small>Telegram Admin Panel</small></div>
+      <div class="nav">
+        <button data-page="dashboard" class="active">Dashboard</button>
+        <button data-page="sources">Sources</button>
+        <button data-page="messages">Messages</button>
+        <button data-page="tags">Tags</button>
+        <button data-page="search">Search</button>
+        <button data-page="settings">Settings</button>
+      </div>
+    </aside>
+
+    <main class="content">
+      <section id="dashboard" class="page active">
+        <h2>Dashboard</h2>
+        <p class="subtitle">System overview and processing health</p>
+        <div class="cards">
+          <div class="card"><div class="label">Total Messages</div><div class="value" id="mTotal">0</div></div>
+          <div class="card"><div class="label">Duplicates</div><div class="value" id="mDup">0</div></div>
+          <div class="card"><div class="label">Published</div><div class="value" id="mPub">0</div></div>
+          <div class="card"><div class="label">Sources</div><div class="value" id="mSrc">0</div></div>
+        </div>
+        <pre id="healthDump" class="mono"></pre>
+      </section>
+
+      <section id="sources" class="page">
+        <h2>Sources</h2>
+        <div class="toolbar">
+          <input id="sourceChannel" placeholder="@channel" />
+          <input id="sourcePriority" type="number" value="100" />
+          <button class="action" id="addSourceBtn">Add Source</button>
+          <button class="action ghost" id="reloadSourcesBtn">Reload</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>ID</th><th>Channel</th><th>Active</th><th>Priority</th><th>Total</th><th>Published</th></tr></thead><tbody id="sourcesBody"></tbody></table></div>
+      </section>
+
+      <section id="messages" class="page">
+        <h2>Messages</h2>
+        <div class="toolbar">
+          <input id="msgTag" placeholder="tag filter" />
+          <button class="action ghost" id="reloadMessagesBtn">Reload</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>ID</th><th>Source</th><th>Created</th><th>Duplicate</th><th>Published</th><th>Text</th></tr></thead><tbody id="messagesBody"></tbody></table></div>
+      </section>
+
+      <section id="tags" class="page">
+        <h2>Tags</h2>
+        <div class="toolbar">
+          <input id="tagName" placeholder="tag" />
+          <button class="action" id="allowTagBtn">Allow</button>
+          <button class="action danger" id="blockTagBtn">Block</button>
+          <button class="action ghost" id="reloadTagsBtn">Reload</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Name</th><th>Allowed</th><th>Blocked</th><th>Usage</th></tr></thead><tbody id="tagsBody"></tbody></table></div>
+      </section>
+
+      <section id="search" class="page">
+        <h2>Semantic Search</h2>
+        <div class="toolbar">
+          <input id="searchQuery" placeholder="Type query" style="min-width:300px" />
+          <input id="searchLimit" type="number" value="20" />
+          <button class="action" id="runSearchBtn">Search</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>ID</th><th>Similarity</th><th>Created</th><th>Text</th></tr></thead><tbody id="searchBody"></tbody></table></div>
+      </section>
+
+      <section id="settings" class="page">
+        <h2>Settings</h2>
+        <div class="toolbar">
+          <input id="sBatch" type="number" placeholder="batch size" />
+          <input id="sThreshold" type="number" step="0.01" placeholder="dedupe threshold" />
+          <input id="sWindow" type="number" placeholder="window days" />
+          <button class="action" id="saveSettingsBtn">Save</button>
+          <button class="action ghost" id="reloadSettingsBtn">Reload</button>
+        </div>
+        <pre id="settingsDump" class="mono"></pre>
+      </section>
+    </main>
+  </div>
+
+  <script src="/miniapp/app.js"></script>
+</body>
+</html>
