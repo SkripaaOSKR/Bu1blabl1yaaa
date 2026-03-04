@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI News Control Panel</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 16px; }
+    nav button { margin-right: 8px; }
+    section { display:none; margin-top: 16px; }
+    section.active { display:block; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border: 1px solid #ddd; padding: 8px; font-size: 12px; }
+    .row { margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Personal AI News Intelligence</h1>
+  <nav>
+    <button onclick="show('dashboard')">Dashboard</button>
+    <button onclick="show('sources')">Sources</button>
+    <button onclick="show('messages')">Messages</button>
+    <button onclick="show('tags')">Tags</button>
+    <button onclick="show('search')">Search</button>
+    <button onclick="show('settings')">Settings</button>
+  </nav>
+
+  <section id="dashboard" class="active"><h2>Dashboard</h2><pre id="dashboardData"></pre></section>
+  <section id="sources"><h2>Sources</h2><div class="row"><input id="sourceChannel" placeholder="@channel"><button onclick="addSource()">Add</button></div><pre id="sourcesData"></pre></section>
+  <section id="messages"><h2>Messages</h2><button onclick="loadMessages()">Refresh</button><pre id="messagesData"></pre></section>
+  <section id="tags"><h2>Tags</h2><div class="row"><input id="tagName" placeholder="tag"><button onclick="allowTag()">Allow</button><button onclick="blockTag()">Block</button></div><pre id="tagsData"></pre></section>
+  <section id="search"><h2>Semantic Search</h2><input id="searchQuery" placeholder="query"><button onclick="doSearch()">Search</button><pre id="searchData"></pre></section>
+  <section id="settings"><h2>Settings</h2><button onclick="loadSettings()">Load</button><pre id="settingsData"></pre></section>
+
+  <script src="/miniapp/app.js"></script>
+</body>
+</html>
