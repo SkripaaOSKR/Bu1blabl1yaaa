@@ -1,0 +1,68 @@
+version: '3.9'
+services:
+  postgres:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: news
+      POSTGRES_USER: news
+      POSTGRES_PASSWORD: news
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U news -d news"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: always
+    command: ["uvicorn", "app.api_server:app", "--host", "0.0.0.0", "--port", "8000"]
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DSN: postgresql+asyncpg://news:news@postgres:5432/news
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - faiss_data:/app/data
+
+  worker:
+    build: .
+    restart: always
+    command: ["python", "-m", "app.worker"]
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DSN: postgresql+asyncpg://news:news@postgres:5432/news
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - faiss_data:/app/data
+
+  bot:
+    build: .
+    restart: always
+    command: ["python", "-m", "app.bot.bot_runner"]
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DSN: postgresql+asyncpg://news:news@postgres:5432/news
+    depends_on:
+      api:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    volumes:
+      - faiss_data:/app/data
+
+volumes:
+  pg_data:
+  faiss_data:

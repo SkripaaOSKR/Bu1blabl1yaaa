@@ -1,6 +1,6 @@
 # AI Telegram Semantic Aggregator
 
-Асинхронный агрегатор Telegram-каналов с семантической дедупликацией, объединением новостей, переводом на русский, тегированием и публикацией в закрытый канал.
+Асинхронный агрегатор Telegram-каналов с семантической дедупликацией, объединением новостей, тегированием и публикацией в закрытый канал.
 
 ## Возможности
 
@@ -10,7 +10,6 @@
 - Дедупликация в окне 7 дней
 - Batch embeddings (`EMBEDDING_BATCH_SIZE=64`)
 - Явный mapping `embedding_id ↔ faiss_id` и автосинхронизация FAISS
-- Lazy-load + LRU cache для MarianMT переводов
 - Объединение похожих новостей с удалением дублей абзацев и источниками
 - Спам-фильтрация (v1 эвристики)
 - Хранение в SQLite (готовность к PostgreSQL)
@@ -39,7 +38,6 @@ TELEGRAM_PUBLISH_CHANNEL=@private_target_channel
 LOG_LEVEL=INFO
 BATCH_SIZE=200
 EMBEDDING_BATCH_SIZE=64
-TRANSLATION_CACHE_SIZE=1024
 ```
 
 ## CLI
@@ -57,5 +55,5 @@ TRANSLATION_CACHE_SIZE=1024
 
 ```text
 Collector -> Batch Processor -> Preprocessor -> Semantic Engine -> Duplicate Detector
--> Merge Engine -> Translator -> Tag Generator -> Media Handler -> Publisher -> Storage
+-> Merge Engine -> Tag Generator -> Media Handler -> Publisher -> Storage
 ```
