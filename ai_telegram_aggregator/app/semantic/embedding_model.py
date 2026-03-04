@@ -1,7 +1,7 @@
 """Sentence embedding wrapper."""
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Sequence
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -14,12 +14,12 @@ class EmbeddingModel:
         self.model = SentenceTransformer(model_name)
         self.batch_size = batch_size
 
-    def encode(self, texts: Iterable[str]) -> np.ndarray:
+    def encode(self, texts: Sequence[str]) -> np.ndarray:
         vectors = self.model.encode(
-            list(texts),
+            texts,
             convert_to_numpy=True,
             normalize_embeddings=True,
             batch_size=self.batch_size,
             show_progress_bar=False,
         )
-        return vectors.astype("float32")
+        return np.asarray(vectors, dtype=np.float32)
