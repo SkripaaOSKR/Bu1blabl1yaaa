@@ -1,0 +1,4735 @@
+PROJECT STRUCTURE:
+.
+├── .env
+├── .env.example
+├── 123.py
+├── Dockerfile
+├── README.md
+├── analytics.json
+├── app
+│   ├── __init__.py
+│   ├── api_server.py
+│   ├── backend
+│   │   ├── __init__.py
+│   │   ├── api
+│   │   │   ├── __init__.py
+│   │   │   ├── analytics.py
+│   │   │   ├── deps.py
+│   │   │   ├── messages.py
+│   │   │   ├── processing.py
+│   │   │   ├── search.py
+│   │   │   ├── settings.py
+│   │   │   ├── sources.py
+│   │   │   ├── spam_keywords.py
+│   │   │   └── tags.py
+│   │   ├── db
+│   │   │   ├── __init__.py
+│   │   │   ├── schema.py
+│   │   │   └── session.py
+│   │   ├── models
+│   │   │   ├── __init__.py
+│   │   │   └── schemas.py
+│   │   ├── security
+│   │   │   ├── __init__.py
+│   │   │   └── auth.py
+│   │   └── services
+│   │       ├── __init__.py
+│   │       ├── ai_service.py
+│   │       ├── data_service.py
+│   │       ├── embedding_service.py
+│   │       ├── faiss_store.py
+│   │       ├── nlp.py
+│   │       ├── processing_service.py
+│   │       └── search_service.py
+│   ├── bot
+│   │   ├── __init__.py
+│   │   └── bot_runner.py
+│   ├── broker.py
+│   ├── collector
+│   │   ├── __init__.py
+│   │   └── telegram_client.py
+│   ├── config.py
+│   ├── miniapp
+│   │   ├── app.js
+│   │   └── index.html
+│   ├── tasks.py
+│   ├── utils
+│   │   ├── __init__.py
+│   │   └── logger.py
+│   └── worker.py
+├── data
+│   ├── aggregator.session
+│   └── faiss.index
+├── docker-compose.yml
+├── login.py
+├── main.py
+├── requirements.txt
+├── run_bot.bat
+└── Текстовый документ.txt
+
+==================================================
+
+FILE: 123.py
+--------------------------------------------------
+import os
+
+# =================================================================================
+# 🛠 НАСТРОЙКИ (CONFIG)
+# =================================================================================
+
+OUTPUT_FILE = "FULL_PROJECT_CONTEXT.txt"
+
+# ✅ [БЕЛЫЙ СПИСОК - РАСШИРЕНИЯ]
+# Скрипт берет ТЕКСТ ТОЛЬКО из этих файлов.
+WHITELIST_EXTENSIONS = {
+    '.py', '.ui', '.qss', '.html', '.css', '.js' '.yml' '.env'
+}
+
+# 📂 [БЕЛЫЙ СПИСОК - ПАПКИ]
+# Если пусто {} -> сканируем весь проект.
+# Если заполнено {'handlers'} -> сканируем только эти папки.
+WHITELIST_DIRS = {
+    # 'handlers',
+    # 'database',
+}
+
+# ⛔ [ЧЕРНЫЙ СПИСОК - ПАПКИ]
+# Игнорируем эти папки (чтобы дерево не зависло на миллионах файлов из venv или .git).
+BLACKLIST_DIRS = {
+    '.git', '.idea', '__pycache__', 'venv', 'env', 
+    'dist', 'build', 'assets', 'media', 'node_modules'
+}
+
+# ⛔ [ЧЕРНЫЙ СПИСОК - ФАЙЛЫ]
+BLACKLIST_FILES = {
+    'collect_project.py', OUTPUT_FILE, '.DS_Store'
+}
+
+# =================================================================================
+# 🌳 ГЕНЕРАТОР ДЕРЕВА (PROJECT MAP)
+# =================================================================================
+
+def get_tree_structure(start_path):
+    """Строит визуальное дерево проекта (ПОЛНОЕ)"""
+    tree_str = "PROJECT STRUCTURE:\n"
+    tree_str += ".\n"  # Корневая точка
+    
+    # Вспомогательная функция для рекурсии
+    def walk(directory, prefix=""):
+        nonlocal tree_str
+        
+        # Получаем список всех элементов в папке
+        try:
+            entries = sorted(os.listdir(directory))
+        except PermissionError:
+            return # Пропускаем папки без доступа
+
+        # Фильтруем список
+        filtered_entries = []
+        for e in entries:
+            full_path = os.path.join(directory, e)
+            
+            # Убираем только мусорные папки (чтобы не парсить venv и .git)
+            if os.path.isdir(full_path) and e in BLACKLIST_DIRS:
+                continue
+            
+            # Убираем только конкретные мусорные файлы
+            if os.path.isfile(full_path) and e in BLACKLIST_FILES:
+                continue
+            
+            # ВАЖНО: Мы больше не фильтруем дерево по расширениям (WHITELIST_EXTENSIONS),
+            # поэтому в карте будут видны все файлы (json, png, md и т.д.)
+            
+            filtered_entries.append(e)
+
+        # Отрисовываем элементы
+        entries_count = len(filtered_entries)
+        for index, entry in enumerate(filtered_entries):
+            full_path = os.path.join(directory, entry)
+            is_last = (index == entries_count - 1)
+            
+            connector = "└── " if is_last else "├── "
+            tree_str += f"{prefix}{connector}{entry}\n"
+            
+            if os.path.isdir(full_path):
+                extension = "    " if is_last else "│   "
+                walk(full_path, prefix + extension)
+
+    walk(start_path)
+    return tree_str + "\n" + "="*50 + "\n\n"
+
+# =================================================================================
+# ⚙️ ОСНОВНАЯ ЛОГИКА
+# =================================================================================
+
+def collect_code():
+    project_root = os.getcwd()
+    
+    # Определяем зоны сканирования
+    if WHITELIST_DIRS:
+        print(f"🎯 Сканируем только папки: {WHITELIST_DIRS}")
+        dirs_to_scan = [os.path.join(project_root, d) for d in WHITELIST_DIRS if os.path.exists(d)]
+    else:
+        print("🌍 Сканируем весь проект")
+        dirs_to_scan = [project_root]
+
+    files_count = 0
+    
+    with open(OUTPUT_FILE, 'w', encoding='utf-8') as outfile:
+        # 1. Сначала пишем Дерево Проекта (Карту) 🗺️
+        print("🌳 Генерируем карту проекта...")
+        # Если сканируем частями, строим дерево для каждой части
+        if len(dirs_to_scan) > 1:
+             outfile.write("PARTIAL PROJECT MAPS:\n")
+             for d in dirs_to_scan:
+                 outfile.write(get_tree_structure(d))
+        else:
+             outfile.write(get_tree_structure(project_root))
+
+        # 2. Теперь собираем контент файлов
+        print("📝 Собираем код...")
+        
+        for start_dir in dirs_to_scan:
+            for root, dirs, files in os.walk(start_dir):
+                # Фильтр папок (чтобы os.walk не лез в мусор)
+                dirs[:] = [d for d in dirs if d not in BLACKLIST_DIRS]
+                
+                for file in files:
+                    if file in BLACKLIST_FILES: continue
+                    
+                    # А вот здесь мы по-прежнему проверяем расширение,
+                    # чтобы не пытаться считывать текст из картинок или скомпилированных файлов.
+                    _, ext = os.path.splitext(file)
+                    if ext not in WHITELIST_EXTENSIONS: continue
+                    
+                    file_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(file_path, project_root)
+                    
+                    try:
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as infile:
+                            content = infile.read()
+                            
+                        # Красивый заголовок для каждого файла
+                        outfile.write(f"FILE: {rel_path}\n")
+                        outfile.write(f"{'-'*50}\n")
+                        outfile.write(content)
+                        outfile.write("\n\n" + "="*50 + "\n\n")
+                        
+                        print(f"✅ Добавлен: {rel_path}")
+                        files_count += 1
+                    except Exception as e:
+                        print(f"❌ Ошибка: {rel_path} - {e}")
+
+    print(f"\n🎉 Готово! Файл '{OUTPUT_FILE}' создан.")
+    print(f"📊 В него вошло файлов с кодом: {files_count}")
+
+if __name__ == "__main__":
+    collect_code()
+
+==================================================
+
+FILE: login.py
+--------------------------------------------------
+from telethon.sync import TelegramClient
+
+api_id = 35077722
+api_hash = "b11b84ff80ecd6905230452bd382684f"
+
+client = TelegramClient("data/aggregator", api_id, api_hash)
+client.start()
+
+print("LOGIN OK")
+
+==================================================
+
+FILE: main.py
+--------------------------------------------------
+from app.api_server import app
+
+__all__ = ["app"]
+
+
+==================================================
+
+FILE: app\api_server.py
+--------------------------------------------------
+from __future__ import annotations
+
+import logging
+import sentry_sdk
+from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# Импортируем все наши API роутеры
+from app.backend.api import (
+    analytics, 
+    messages, 
+    processing, 
+    search, 
+    settings as settings_api, 
+    sources, 
+    tags,
+    spam_keywords  # <--- НАШ НОВЫЙ РОУТЕР
+)
+from app.backend.api.deps import get_session
+from app.backend.db.schema import init_postgres_schema
+from app.backend.db.session import engine
+from app.backend.services.processing_service import ProcessingService
+from app.config import get_settings
+from app.utils.logger import setup_logger
+
+settings = get_settings()
+
+# --- ИНИЦИАЛИЗАЦИЯ ЧЕРНОГО ЯЩИКА ---
+# 1. Локальные логи (запись в файл logs/blackbox.log)
+setup_logger(settings.log_level)
+logger = logging.getLogger(__name__)
+
+# 2. Облачные логи (Sentry)
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        traces_sample_rate=1.0,  # Записывать 100% ошибок
+    )
+    logger.info("Sentry (Cloud Black Box) is initialized and active.")
+# -----------------------------------
+
+# Инициализация FastAPI приложения
+app = FastAPI(
+    title="Personal AI News Intelligence API", 
+    version="2.0.0",
+    description="Backend server for AI-powered news aggregation and filtering"
+)
+
+# --- НАСТРОЙКА CORS ---
+# Позволяет Mini App (фронтенду) делать запросы к этому API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        settings.miniapp_origin, 
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000",
+        "http://localhost:8000"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- ПОДКЛЮЧЕНИЕ РОУТЕРОВ ---
+app.include_router(sources.router)
+app.include_router(tags.router)
+app.include_router(messages.router)
+app.include_router(search.router)
+app.include_router(analytics.router)
+app.include_router(processing.router)
+app.include_router(settings_api.router)
+app.include_router(spam_keywords.router) # <--- ВКЛЮЧАЕМ ГИБКИЙ ФИЛЬТР
+
+# Подключаем папку с админкой (Mini App) как статические файлы
+# Теперь по адресу http://localhost:8000/miniapp/ будет открываться твой сайт
+app.mount("/miniapp", StaticFiles(directory="app/miniapp", html=True), name="miniapp")
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    """Действия при запуске сервера."""
+    logger.info("Initializing database schema and migrations...")
+    # Создаем таблицы и добавляем новые колонки (topic_id, fmt_text и т.д.)
+    await init_postgres_schema(engine)
+    logger.info("Database is ready.")
+
+
+@app.get("/health")
+async def health(db: AsyncSession = Depends(get_session)) -> dict[str, object]:
+    """Базовая проверка работоспособности системы."""
+    processing_service = ProcessingService(db)
+    # Проверяем, загружен ли векторный индекс FAISS
+    await processing_service.ensure_initialized()
+
+    sources_count = await db.execute(text("SELECT COUNT(*) FROM sources"))
+    
+    return {
+        "status": "ok",
+        "version": "2.0.0",
+        "faiss_vectors": processing_service.faiss.ntotal,
+        "sources_total": int(sources_count.scalar() or 0),
+    }
+
+
+@app.get("/system/health")
+async def system_health(db: AsyncSession = Depends(get_session)) -> dict[str, object]:
+    """Детальная диагностика всех компонентов системы."""
+    try:
+        # Проверка связи с БД
+        await db.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        db_status = "error"
+
+    processing_service = ProcessingService(db)
+    await processing_service.ensure_initialized()
+
+    # Получаем состояние последнего запуска воркера
+    state_row = await db.execute(
+        text("SELECT last_run_status, last_processed_timestamp, last_run_count FROM processing_state WHERE id=1")
+    )
+    state = state_row.fetchone()
+
+    # Считаем активные каналы
+    active_row = await db.execute(text("SELECT COUNT(*) FROM sources WHERE is_active=TRUE"))
+    active_count = int(active_row.scalar() or 0)
+
+    return {
+        "database": db_status,
+        "faiss_loaded": processing_service.faiss is not None,
+        "faiss_vectors_count": processing_service.faiss.ntotal,
+        "active_sources": active_count,
+        "worker_state": {
+            "last_status": state.last_run_status if state else None,
+            "last_count": state.last_run_count if state else 0,
+            "last_checkpoint": state.last_processed_timestamp.isoformat() if state and state.last_processed_timestamp else None,
+        }
+    }
+
+==================================================
+
+FILE: app\broker.py
+--------------------------------------------------
+from __future__ import annotations
+
+import logging
+from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend
+from app.config import get_settings
+
+# Настраиваем логгер для брокера
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+result_backend = RedisAsyncResultBackend(
+    redis_url=settings.redis_url,
+    keep_results=True,          # Хранить результат выполнения
+    result_ttl=86400,           # Срок жизни результата — 24 часа
+)
+
+broker = ListQueueBroker(
+    url=settings.redis_url,
+).with_result_backend(result_backend)
+
+==================================================
+
+FILE: app\config.py
+--------------------------------------------------
+"""Application configuration management."""
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+from urllib.parse import urlparse
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+DATA_DIR = BASE_DIR / "data"
+
+
+class Settings(BaseSettings):
+    """Environment-driven settings for the platform."""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    app_name: str = "Personal AI News Intelligence"
+    log_level: str = "INFO"
+    environment: str = "prod"
+
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+
+    telegram_api_id: int = 0
+    telegram_api_hash: str = ""
+    telegram_session_name: str = "aggregator"
+    telegram_string_session: str = ""
+    telegram_publish_channel: str = ""
+    telegram_bot_token: str = ""
+
+    # --- НОВЫЕ НАСТРОЙКИ ДЛЯ ИИ И КАРАНТИНА ---
+    groq_api_key: str = ""
+    telegram_spam_topic_id: int | None = None
+    # ------------------------------------------
+    
+    # --- ОБЛАЧНЫЙ ЧЕРНЫЙ ЯЩИК (SENTRY) ---
+    sentry_dsn: str | None = None
+    # ------------------------------------------
+
+    # --- ФАЗА 2: ОЧЕРЕДИ ЗАДАЧ (REDIS) ---
+    # По умолчанию подключаемся к контейнеру 'redis' из docker-compose
+    redis_url: str = "redis://redis:6379/0"
+    # ------------------------------------------
+
+    telegram_sources: str = ""
+    admin_user_ids: str = ""
+
+    batch_size: int = 500
+    embedding_batch_size: int = 128
+    dedupe_similarity_threshold: float = 0.80
+    dedupe_window_days: int = 14
+    merge_max_chars: int = 1800
+
+    spam_min_words: int = 4
+    spam_max_links: int = 3
+    spam_repeat_threshold: int = 3
+
+    faiss_index_path: Path = Field(default=DATA_DIR / "faiss.index")
+    analytics_path: Path = Field(default=DATA_DIR / "analytics.json")
+    embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+
+    postgres_dsn: str = "postgresql+asyncpg://news:news@postgres:5432/news"
+
+    miniapp_base_url: str = "http://localhost:8000/miniapp"
+
+    @property
+    def sources(self) -> list[str]:
+        return[item.strip() for item in self.telegram_sources.split(",") if item.strip()]
+
+    @property
+    def admin_ids(self) -> set[int]:
+        return {int(item.strip()) for item in self.admin_user_ids.split(",") if item.strip()}
+
+    @property
+    def miniapp_origin(self) -> str:
+        parsed = urlparse(self.miniapp_base_url)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}"
+        return self.miniapp_base_url
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Return cached settings instance."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    return Settings()
+
+==================================================
+
+FILE: app\tasks.py
+--------------------------------------------------
+from __future__ import annotations
+
+import logging
+from typing import List
+from app.broker import broker
+from app.backend.db.session import SessionLocal
+from app.backend.services.processing_service import ProcessingService
+from app.config import get_settings
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+@broker.task
+async def process_news_task(message_ids: List[int]) -> bool:
+    """
+    Фоновая задача для обработки и публикации новости.
+    Принимает список ID сообщений (из одной группы/альбома),
+    выполняет ИИ-анализ и отправляет в Telegram.
+    """
+    if not message_ids:
+        return False
+
+    logger.info(f"🚀 Starting background task for messages: {message_ids}")
+    
+    # Открываем отдельную сессию БД для этой задачи
+    async with SessionLocal() as db:
+        try:
+            # Инициализируем сервис обработки
+            service = ProcessingService(db)
+            await service.ensure_initialized()
+            
+            # 1. Загружаем данные сообщений из БД по их ID
+            # Мы передаем ID, чтобы не пересылать тяжелые объекты через Redis
+            result = await service.process_specific_messages(message_ids)
+            
+            if result:
+                logger.info(f"✅ Task completed successfully for {message_ids}")
+                return True
+            else:
+                logger.warning(f"⚠️ Task finished without publication for {message_ids}")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Error in process_news_task: {e}", exc_info=True)
+            return False
+
+@broker.task
+async def sync_faiss_task() -> None:
+    """
+    Задача для периодической синхронизации FAISS индекса с базой данных.
+    """
+    async with SessionLocal() as db:
+        try:
+            service = ProcessingService(db)
+            await service.sync_faiss_index()
+            logger.info("📡 FAISS index synchronized in background.")
+        except Exception as e:
+            logger.error(f"❌ FAISS sync task failed: {e}")
+
+==================================================
+
+FILE: app\worker.py
+--------------------------------------------------
+from __future__ import annotations
+
+import asyncio
+import logging
+import sys
+import sentry_sdk
+import redis.asyncio as aioredis
+
+from app.backend.db.session import SessionLocal, engine
+from app.backend.db.schema import init_postgres_schema
+from app.backend.services.processing_service import ProcessingService
+from app.config import get_settings
+from app.utils.logger import setup_logger
+
+settings = get_settings()
+
+# --- ИНИЦИАЛИЗАЦИЯ ЧЕРНОГО ЯЩИКА ---
+# 1. Локальные логи (запись в файл logs/blackbox.log)
+setup_logger(settings.log_level)
+logger = logging.getLogger("worker")
+
+# 2. Облачные логи (Sentry)
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        traces_sample_rate=1.0,  # Записывать 100% ошибок
+    )
+    logger.info("Sentry (Cloud Black Box) is initialized and active in Worker.")
+# -----------------------------------
+
+async def run_collector_loop(interval_seconds: int = 600) -> None:
+    """Бесконечный цикл СБОРЩИКА с защитой от переполнения Redis."""
+    logger.info("🛠 Checking database schema...")
+    try:
+        await init_postgres_schema(engine)
+        logger.info("✅ Database schema initialized.")
+    except Exception as e:
+        logger.error(f"❌ Failed to init database: {e}")
+
+    logger.info(f"🚀 Collector started. Interval: {interval_seconds}s")
+    redis_client = aioredis.from_url(settings.redis_url)
+
+    while True:
+        try:
+            # ЗАЩИТА: Проверяем, не задыхается ли ИИ (Redis)
+            try:
+                # TaskIQ хранит задачи по умолчанию в этом ключе
+                queue_len = await redis_client.llen("taskiq:queue:default")
+                if queue_len > 500:
+                    logger.warning(f"⚠️ Redis queue is full ({queue_len} tasks). Collector is pausing for 3 minutes...")
+                    await asyncio.sleep(180)
+                    continue
+            except Exception as e:
+                logger.warning(f"Could not check Redis queue length: {e}")
+
+            async with SessionLocal() as db:
+                service = ProcessingService(db)
+                logger.info("🔄 Starting news collection cycle...")
+                result = await service.run_batch(hours=None)
+                logger.info(f"✅ Collection cycle completed: {result}")
+                
+        except Exception:
+            logger.exception("❌ CRITICAL ERROR in collector loop")
+
+        await asyncio.sleep(interval_seconds)
+
+async def main() -> None:
+    """Точка входа для Сборщика (Collector)."""
+    logger.info("⚡ Starting standalone Collector process...")
+    try:
+        await run_collector_loop()
+    except asyncio.CancelledError:
+        logger.info("🛑 Collector tasks cancelled.")
+    except KeyboardInterrupt:
+        logger.info("🛑 Collector stopped by user.")
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+
+==================================================
+
+FILE: app\__init__.py
+--------------------------------------------------
+
+
+==================================================
+
+FILE: app\backend\__init__.py
+--------------------------------------------------
+
+
+==================================================
+
+FILE: app\backend\api\analytics.py
+--------------------------------------------------
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.backend.api.deps import get_admin_user_id, get_session
+from app.backend.services.data_service import DataService
+
+router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+
+
+@router.get("/daily")
+async def daily_stats(
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> dict:
+    """
+    Сбор сводной статистики для главного экрана админки.
+    
+    Возвращает:
+    - daily: статистика по дням (total, duplicates, published).
+    - top_sources: список самых активных каналов.
+    - top_tags: список самых популярных хэштегов.
+    """
+    svc = DataService(db)
+    
+    # 1. Получаем статистику по дням за последние 30 дней
+    daily = await svc.analytics_daily()
+    
+    # 2. Получаем топ-10 источников по количеству сообщений
+    source_query = text("""
+        SELECT 
+            id, 
+            channel, 
+            total_messages, 
+            published_messages, 
+            duplicate_count,
+            spam_count
+        FROM sources 
+        ORDER BY total_messages DESC 
+        LIMIT 10
+    """)
+    source_rows = await db.execute(source_query)
+    top_sources = [dict(r._mapping) for r in source_rows.fetchall()]
+    
+    # 3. Получаем топ-20 тегов по частоте использования
+    tag_query = text("""
+        SELECT 
+            name, 
+            usage_count 
+        FROM tags 
+        ORDER BY usage_count DESC 
+        LIMIT 20
+    """)
+    tag_rows = await db.execute(tag_query)
+    top_tags = [dict(r._mapping) for r in tag_rows.fetchall()]
+    
+    # 4. Логируем действие администратора
+    await svc.log_action(user_id, "analytics.daily_view", {})
+    
+    return {
+        "daily": daily, 
+        "top_sources": top_sources, 
+        "top_tags": top_tags
+    }
+
+==================================================
+
+FILE: app\backend\api\deps.py
+--------------------------------------------------
+from __future__ import annotations
+
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.backend.db.session import get_db
+from app.backend.security.auth import telegram_auth_guard
+
+
+def get_admin_user_id(user_id: int = Depends(telegram_auth_guard)) -> int:
+    """
+    Зависимость для защиты эндпоинтов.
+    Проверяет X-Telegram-Auth заголовок и возвращает ID админа.
+    Если проверка не пройдена, FastAPI автоматически вернет 401/403 ошибку.
+    """
+    return user_id
+
+
+async def get_session(session: AsyncSession = Depends(get_db)) -> AsyncSession:
+    """
+    Зависимость для получения асинхронной сессии базы данных.
+    FastAPI сам создаст сессию в начале запроса и закроет её в конце.
+    """
+    return session
+
+==================================================
+
+FILE: app\backend\api\messages.py
+--------------------------------------------------
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.backend.api.deps import get_admin_user_id, get_session
+from app.backend.services.data_service import DataService
+from app.backend.services.processing_service import ProcessingService
+from app.collector.telegram_client import TelegramCollector
+from app.config import get_settings
+
+router = APIRouter(prefix="/api/messages", tags=["messages"])
+logger = logging.getLogger(__name__)
+
+@router.get("")
+async def list_messages(
+    source_id: int | None = None,
+    tag: str | None = None,
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    limit: int = 200,
+    db: AsyncSession = Depends(get_session),
+    user_id: int = Depends(get_admin_user_id),
+) -> list[dict]:
+    """
+    Получение списка сообщений для админки.
+    Умная группировка: схлопывает медиа-альбомы в один пост.
+    """
+    svc = DataService(db)
+    await svc.log_action(user_id, "messages.list", {"source_id": source_id, "tag": tag})
+    
+    raw_messages = await svc.list_messages(source_id, tag, date_from, date_to, limit)
+    
+    # --- СХЛОПЫВАЕМ АЛЬБОМЫ ---
+    result = []
+    album_map = {}
+    
+    for msg in raw_messages:
+        mg_id = msg.get('media_group_id')
+        if mg_id:
+            if mg_id not in album_map:
+                # Сохраняем первую найденную часть альбома
+                album_map[mg_id] = msg
+                result.append(msg)
+            else:
+                # Если у первой части не было текста, а у этой есть — забираем текст
+                if not album_map[mg_id].get('text') and msg.get('text'):
+                    album_map[mg_id]['text'] = msg.get('text')
+                    album_map[mg_id]['fmt_text'] = msg.get('fmt_text')
+        else:
+            # Обычное одиночное сообщение
+            result.append(msg)
+            
+    return result
+
+
+@router.delete("/{message_id}")
+async def delete_message(
+    message_id: int, 
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> dict:
+    """
+    Пометка сообщения как СПАМ (Обучение системы).
+    """
+    svc = DataService(db)
+    # Вместо физического удаления — помечаем как подтвержденный спам
+    await svc.mark_confirmed_spam(message_id)
+    await svc.log_action(user_id, "messages.mark_spam", {"message_id": message_id})
+    return {"ok": True}
+
+
+@router.post("/{message_id}/republish")
+async def republish_message(
+    message_id: int, 
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> dict:
+    """
+    Принудительная публикация сообщения (выход из Карантина).
+    """
+    # 1. ЗАЩИТА: Проверяем, не занят ли воркер
+    # Если воркер работает, он держит файл сессии. Мы не можем мешать ему.
+    state_res = await db.execute(text("SELECT last_run_status FROM processing_state WHERE id=1"))
+    state_row = state_res.fetchone()
+    
+    if state_row and state_row.last_run_status == 'running':
+        raise HTTPException(
+            status_code=409, 
+            detail="⚠️ Система сейчас собирает новости. Пожалуйста, подождите завершения цикла (10-30 сек) и попробуйте снова."
+        )
+
+    settings = get_settings()
+    data_svc = DataService(db)
+    
+    # 2. Сначала получаем информацию о целевом сообщении
+    base_query = text("""
+        SELECT m.*, s.channel as source_channel, s.topic_id 
+        FROM messages m 
+        JOIN sources s ON s.id = m.source_id 
+        WHERE m.id = :mid
+    """)
+    res = await db.execute(base_query, {"mid": message_id})
+    target_msg = res.fetchone()
+    
+    if not target_msg:
+        raise HTTPException(status_code=404, detail="Сообщение не найдено")
+
+    target_dict = dict(target_msg._mapping)
+    media_group_id = target_dict.get('media_group_id')
+
+    # 3. Если это альбом, собираем все его части
+    if media_group_id:
+        album_query = text("""
+            SELECT m.*, s.channel as source_channel, s.topic_id 
+            FROM messages m 
+            JOIN sources s ON s.id = m.source_id 
+            WHERE m.media_group_id = :mgid
+            ORDER BY m.id ASC
+        """)
+        album_res = await db.execute(album_query, {"mgid": media_group_id})
+        messages_to_pub = [dict(r._mapping) for r in album_res.fetchall()]
+    else:
+        # Если не альбом, публикуем только одно это сообщение
+        messages_to_pub = [target_dict]
+
+    # 4. Публикация в Telegram
+    try:
+        async with TelegramCollector(
+            settings.telegram_api_id, 
+            settings.telegram_api_hash, 
+            settings.telegram_session_name
+        ) as collector:
+            
+            proc_svc = ProcessingService(db)
+            
+            # Вызываем метод публикации с флагом bypass_ai=True
+            success = await proc_svc._publish_beautiful_post(
+                collector=collector,
+                channel_name=target_dict['source_channel'],
+                messages=messages_to_pub,
+                topic_id=target_dict['topic_id'],
+                bypass_ai=True
+            )
+            
+            if not success:
+                raise HTTPException(status_code=500, detail="Ошибка отправки в Telegram (см. логи)")
+
+    except Exception as e:
+        logger.error(f"Republish error: {e}")
+        await data_svc.log_action(user_id, "messages.republish_error", {"id": message_id, "error": str(e)})
+        # Если это ошибка блокировки базы, даем понятное сообщение
+        if "database is locked" in str(e):
+             raise HTTPException(status_code=409, detail="База данных Telegram занята. Попробуйте через 5 секунд.")
+        raise HTTPException(status_code=500, detail=f"Ошибка Telegram: {e}")
+
+    # 5. Помечаем все опубликованные ID как is_published = TRUE
+    pub_ids = [m['id'] for m in messages_to_pub]
+    await db.execute(
+        text("UPDATE messages SET is_published = TRUE WHERE id = ANY(:ids)"),
+        {"ids": pub_ids}
+    )
+    await db.commit()
+    
+    await data_svc.log_action(user_id, "messages.republish_success", {"ids": pub_ids})
+    
+    return {"ok": True, "published_count": len(pub_ids)}
+
+==================================================
+
+FILE: app\backend\api\processing.py
+--------------------------------------------------
+from __future__ import annotations
+
+import asyncio
+import logging
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.backend.api.deps import get_admin_user_id, get_session
+from app.backend.db.session import SessionLocal
+from app.backend.models.schemas import ProcessingRunRequest
+from app.backend.services.data_service import DataService
+from app.backend.services.processing_service import ProcessingService
+
+router = APIRouter(prefix="/api/processing", tags=["processing"])
+
+logger = logging.getLogger(__name__)
+
+# Глобальные переменные для отслеживания активного процесса парсинга.
+# Это позволяет нам знать статус воркера из любой точки программы.
+_running_task: asyncio.Task | None = None
+_running_service: ProcessingService | None = None
+
+
+async def _run_with_own_session(hours: int | None) -> dict:
+    """
+    Внутренняя функция для запуска воркера. 
+    Создает отдельную сессию БД, так как процесс парсинга может длиться долго,
+    и основная сессия API может закрыться по таймауту.
+    """
+    global _running_service
+    
+    # Открываем новую сессию специально для этого запуска
+    async with SessionLocal() as db:
+        service = ProcessingService(db)
+        _running_service = service
+        
+        try:
+            logger.info(f"Starting background processing task (hours={hours})")
+            # Запускаем основной алгоритм сбора и обработки
+            result = await service.run_batch(hours)
+            logger.info(f"Background processing task finished: {result}")
+            return result
+        except Exception as e:
+            # Если что-то упало внутри, логируем ошибку, чтобы не уронить весь сервер
+            logger.exception("CRITICAL: Background processing task failed")
+            return {"status": "failed", "error": str(e)}
+        finally:
+            # В любом случае очищаем ссылку на сервис, чтобы можно было запустить снова
+            _running_service = None
+
+
+@router.post("/run")
+async def run_batch(
+    payload: ProcessingRunRequest, 
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> dict:
+    """
+    Запуск процесса сбора новостей.
+    
+    Проверки:
+    1. Если воркер уже работает - выдает ошибку 409 (Conflict).
+    2. Если свободен - создает фоновую задачу (asyncio.create_task).
+    """
+    global _running_task
+    
+    # Проверка на "двойной запуск"
+    if _running_task and not _running_task.done():
+        logger.warning(f"User {user_id} tried to start worker while it is already running")
+        raise HTTPException(
+            status_code=409, 
+            detail="Процесс парсинга уже запущен и работает в фоне."
+        )
+
+    # Запускаем задачу в фоне, чтобы API сразу ответило "ОК", не дожидаясь конца парсинга
+    _running_task = asyncio.create_task(_run_with_own_session(payload.hours))
+    
+    # Записываем в аудит, кто запустил воркер
+    await DataService(db).log_action(user_id, "processing.run", payload.model_dump())
+    
+    return {"ok": True, "status": "started"}
+
+
+@router.post("/cancel")
+async def cancel_run(
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> dict:
+    """
+    Остановка текущего процесса парсинга.
+    Посылает сигнал 'cancelled' внутрь ProcessingService.
+    """
+    global _running_service
+    
+    if _running_service is not None:
+        # Вызываем метод отмены внутри сервиса
+        _running_service.cancel()
+        logger.info(f"User {user_id} sent cancel signal to worker")
+        
+        await DataService(db).log_action(user_id, "processing.cancel", {})
+        return {"ok": True, "message": "Сигнал на остановку отправлен воркеру."}
+    
+    return {"ok": False, "message": "Сейчас нет активных процессов для остановки."}
+
+
+@router.get("/status")
+async def status(
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> dict:
+    """
+    Проверка статуса системы. 
+    Возвращает информацию о том, работает ли бот сейчас, и данные о последнем запуске.
+    """
+    # Берем из базы данных последнюю статистику (длительность, кол-во постов)
+    state = await DataService(db).get_processing_state()
+    
+    # Проверяем статус фоновой задачи
+    is_running = _running_task is not None and not _running_task.done()
+    
+    return {
+        "running": is_running,
+        "state": state
+    }
+
+==================================================
+
+FILE: app\backend\api\search.py
+--------------------------------------------------
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.backend.api.deps import get_admin_user_id, get_session
+from app.backend.models.schemas import SearchRequest
+from app.backend.services.data_service import DataService
+from app.backend.services.search_service import SearchService
+from app.config import get_settings
+
+router = APIRouter(prefix="/api/search", tags=["search"])
+
+
+@router.post("")
+async def semantic_search(payload: SearchRequest, db: AsyncSession = Depends(get_session), user_id: int = Depends(get_admin_user_id)) -> list[dict]:
+    settings = get_settings()
+    svc = SearchService(db, settings.embedding_model_name, settings.faiss_index_path)
+    data = await svc.semantic_search(payload.query, payload.limit, payload.source_id, payload.tag)
+    await DataService(db).log_action(user_id, "search.semantic", payload.model_dump())
+    return data
+
+
+==================================================
+
+FILE: app\backend\api\settings.py
+--------------------------------------------------
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.backend.api.deps import get_admin_user_id, get_session
+from app.backend.models.schemas import SettingsOut, SettingsUpdate
+from app.backend.services.data_service import DataService
+
+router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+
+@router.get("", response_model=SettingsOut)
+async def get_settings(
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> dict:
+    """
+    Получение текущих глобальных настроек системы.
+    Используется в админке на вкладке 'Settings'.
+    """
+    svc = DataService(db)
+    # Загружаем настройки из таблицы settings (строка с ID=1)
+    result = await svc.get_settings()
+    
+    # Логируем факт просмотра настроек
+    await svc.log_action(user_id, "settings.get", {})
+    
+    return result
+
+
+@router.patch("", response_model=SettingsOut)
+async def update_settings(
+    payload: SettingsUpdate, 
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> dict:
+    """
+    Обновление глобальных настроек.
+    Позволяет менять:
+    - dedupe_threshold (порог схожести 0.0 - 1.0)
+    - batch_size (кол-во сообщений за раз 1 - 1000)
+    - dedupe_window_days (глубина поиска дублей)
+    - ai_prompt (кастомный промпт для ИИ)
+    - и другие параметры.
+    """
+    svc = DataService(db)
+    
+    # Превращаем модель Pydantic в словарь, удаляя пустые поля (None)
+    # Это позволяет обновлять только один параметр, не затрагивая остальные
+    values = {k: v for k, v in payload.model_dump().items() if v is not None}
+    
+    if values:
+        # Сохраняем изменения в базу данных
+        await svc.update_settings(values)
+        # Записываем в аудит, что именно и на что было изменено
+        await svc.log_action(user_id, "settings.update", values)
+    
+    # ВОЗВРАЩАЕМ АКТУАЛЬНЫЕ ДАННЫЕ ВМЕСТО {"ok": True}
+    return await svc.get_settings()
+
+==================================================
+
+FILE: app\backend\api\sources.py
+--------------------------------------------------
+from __future__ import annotations
+
+import re
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.backend.api.deps import get_admin_user_id, get_session
+from app.backend.models.schemas import SourceCreate, SourceUpdate
+from app.backend.services.data_service import DataService
+
+router = APIRouter(prefix="/api/sources", tags=["sources"])
+
+
+@router.get("")
+async def list_sources(db: AsyncSession = Depends(get_session), user_id: int = Depends(get_admin_user_id)) -> list[dict]:
+    """
+    Получение списка всех источников.
+    Используется админкой для отображения таблицы каналов и их статистики.
+    """
+    svc = DataService(db)
+    rows = await svc.list_sources()
+    # Логируем просмотр списка (опционально для аудита)
+    await svc.log_action(user_id, "sources.list", {})
+    return rows
+
+
+@router.post("")
+async def add_source(payload: SourceCreate, db: AsyncSession = Depends(get_session), user_id: int = Depends(get_admin_user_id)) -> dict:
+    """
+    Добавление нового канала-источника.
+    
+    Включает мощную логику нормализации:
+    - Превращает 'https://t.me/username' в '@username'
+    - Превращает 'https://t.me/+hash' в '+hash' (приватные ссылки)
+    - Превращает '123456789' в '-100123456789' (ID каналов)
+    - Удаляет параметры запроса вроде ?boost=1
+    """
+    svc = DataService(db)
+    
+    # 1. Очистка входных данных от пробелов
+    channel = payload.channel.strip()
+    
+    # 2. УМНАЯ НОРМАЛИЗАЦИЯ
+    # Удаляем протоколы (http/https) и домены (t.me / telegram.me)
+    channel = re.sub(r'^https?://(www\.)?(t\.me|telegram\.me)/', '', channel)
+    
+    # Удаляем параметры после знака вопроса (UTM-метки, параметры входа и т.д.)
+    channel = channel.split('?')[0].strip('/')
+    
+    # Обработка старых форматов ссылок приглашения
+    if channel.startswith('joinchat/'):
+        channel = '+' + channel[len('joinchat/'):]
+        
+    # Приведение к итоговому стандарту для Telethon
+    if channel.startswith('+') or channel.startswith('@'):
+        # Уже корректный формат для приватных или публичных каналов
+        pass
+    elif channel.lstrip('-').isdigit():
+        # Если это числовой ID (например, 2549200647)
+        # Для каналов в Telegram ID всегда начинается с -100
+        if not channel.startswith('-100') and len(channel.lstrip('-')) > 8:
+            channel = f"-100{channel.lstrip('-')}"
+    else:
+        # Если передан просто текст (напр. 'durov'), добавляем @
+        channel = f"@{channel}"
+    
+    # 3. СОХРАНЕНИЕ В БАЗУ
+    # Передаем topic_id, чтобы новости сразу летели в нужную ветку (ветка может быть None)
+    row = await svc.add_source(
+        channel=channel, 
+        priority=payload.priority, 
+        category=payload.category, 
+        language=payload.language,
+        topic_id=payload.topic_id
+        title=payload.title
+    )
+    
+    # 4. АУДИТ
+    # Сохраняем в лог как исходную ссылку, так и результат нормализации
+    log_payload = payload.model_dump()
+    log_payload["normalized_result"] = channel
+    await svc.log_action(user_id, "sources.add", log_payload)
+    
+    return row
+
+
+@router.patch("/{source_id}")
+async def update_source(source_id: int, payload: SourceUpdate, db: AsyncSession = Depends(get_session), user_id: int = Depends(get_admin_user_id)) -> dict:
+    """
+    Частичное обновление настроек источника.
+    Позволяет включить/выключить канал или сменить ему ID ветки (Topic).
+    """
+    svc = DataService(db)
+    
+    # Модели Pydantic позволяют получить только те поля, которые прислал клиент
+    update_values = payload.model_dump(exclude_none=True)
+    
+    if update_values:
+        await svc.update_source(source_id, update_values)
+        # Записываем в аудит, что именно изменилось
+        await svc.log_action(user_id, "sources.update", {"source_id": source_id, **update_values})
+    
+    return {"ok": True}
+
+
+@router.delete("/{source_id}")
+async def remove_source(source_id: int, db: AsyncSession = Depends(get_session), user_id: int = Depends(get_admin_user_id)) -> dict:
+    """
+    Удаление источника.
+    В базе настроено каскадное удаление (ON DELETE CASCADE), 
+    поэтому все сообщения этого канала тоже удалятся.
+    """
+    svc = DataService(db)
+    await svc.remove_source(source_id)
+    
+    # Записываем в аудит
+    await svc.log_action(user_id, "sources.remove", {"source_id": source_id})
+    
+    return {"ok": True}
+
+==================================================
+
+FILE: app\backend\api\spam_keywords.py
+--------------------------------------------------
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.backend.api.deps import get_admin_user_id, get_session
+from app.backend.models.schemas import SpamKeywordCreate, SpamKeywordUpdate
+from app.backend.services.data_service import DataService
+
+router = APIRouter(prefix="/api/spam_keywords", tags=["spam_keywords"])
+
+
+@router.get("")
+async def list_keywords(
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> list[dict]:
+    """Получение списка всех стоп-слов для фильтра спама."""
+    svc = DataService(db)
+    # Логируем просмотр фильтров
+    await svc.log_action(user_id, "spam_keywords.list", {})
+    return await svc.list_spam_keywords()
+
+
+@router.post("")
+async def add_keyword(
+    payload: SpamKeywordCreate, 
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> dict:
+    """Добавление нового слова в систему фильтрации."""
+    svc = DataService(db)
+    
+    # Добавляем слово через сервис
+    row = await svc.add_spam_keyword(payload.word)
+    
+    # Логируем добавление
+    await svc.log_action(user_id, "spam_keywords.add", payload.model_dump())
+    
+    return row
+
+
+@router.patch("/{keyword_id}/toggle")
+async def toggle_keyword(
+    keyword_id: int, 
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> dict:
+    """
+    Переключение статуса слова (активно/выключено).
+    Находит текущий статус и меняет его на противоположный.
+    """
+    svc = DataService(db)
+    
+    # 1. Сначала найдем текущее состояние слова
+    from sqlalchemy import text
+    res = await db.execute(
+        text("SELECT is_active FROM spam_keywords WHERE id = :id"),
+        {"id": keyword_id}
+    )
+    current = res.fetchone()
+    
+    if not current:
+        raise HTTPException(status_code=404, detail="Слово не найдено в базе")
+    
+    # 2. Меняем статус на противоположный
+    new_status = not current.is_active
+    await svc.toggle_spam_keyword(keyword_id, new_status)
+    
+    # Логируем
+    await svc.log_action(user_id, "spam_keywords.toggle", {"id": keyword_id, "new_status": new_status})
+    
+    return {"ok": True, "is_active": new_status}
+
+
+@router.delete("/{keyword_id}")
+async def remove_keyword(
+    keyword_id: int, 
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> dict:
+    """Полное удаление слова из базы фильтров."""
+    svc = DataService(db)
+    
+    await svc.remove_spam_keyword(keyword_id)
+    await svc.log_action(user_id, "spam_keywords.remove", {"id": keyword_id})
+    
+    return {"ok": True}
+
+==================================================
+
+FILE: app\backend\api\tags.py
+--------------------------------------------------
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.backend.api.deps import get_admin_user_id, get_session
+from app.backend.models.schemas import TagMerge, TagToggle
+from app.backend.services.data_service import DataService
+
+router = APIRouter(prefix="/api/tags", tags=["tags"])
+
+
+@router.get("")
+async def list_tags(
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> list[dict]:
+    """
+    Получение списка всех тегов из базы данных.
+    Используется в админке для управления фильтрами.
+    """
+    svc = DataService(db)
+    # Логируем просмотр списка тегов
+    await svc.log_action(user_id, "tags.list", {})
+    # Возвращает список тегов, отсортированный по частоте использования
+    return await svc.list_tags()
+
+
+@router.post("/toggle")
+async def toggle_tag(
+    payload: TagToggle, 
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> dict:
+    """
+    Включение или блокировка тега.
+    Если тег заблокирован (is_blocked=True), он перестает 
+    добавляться в новые сообщения в Telegram.
+    """
+    svc = DataService(db)
+    
+    # Вызываем метод upsert, который создаст тег или обновит его статус
+    await svc.upsert_tag(
+        name=payload.name, 
+        allowed=payload.is_allowed, 
+        blocked=payload.is_blocked
+    )
+    
+    # Записываем изменение в аудит
+    await svc.log_action(user_id, "tags.toggle", payload.model_dump())
+    
+    return {"ok": True}
+
+
+@router.post("/merge")
+async def merge_tag(
+    payload: TagMerge, 
+    db: AsyncSession = Depends(get_session), 
+    user_id: int = Depends(get_admin_user_id)
+) -> dict:
+    """
+    Слияние двух тегов в один.
+    Все сообщения, помеченные тегом 'from_name', 
+    теперь будут помечены тегом 'to_name'.
+    """
+    svc = DataService(db)
+    
+    # Выполняем перенос связей в базе данных
+    await svc.merge_tags(
+        from_name=payload.from_name, 
+        to_name=payload.to_name
+    )
+    
+    # Логируем слияние
+    await svc.log_action(user_id, "tags.merge", payload.model_dump())
+    
+    return {"ok": True}
+
+==================================================
+
+FILE: app\backend\api\__init__.py
+--------------------------------------------------
+
+
+==================================================
+
+FILE: app\backend\db\schema.py
+--------------------------------------------------
+from __future__ import annotations
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+# Полная SQL-схема со всеми необходимыми полями
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS sources (
+    id BIGSERIAL PRIMARY KEY,
+    channel TEXT UNIQUE NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    priority INTEGER NOT NULL DEFAULT 100,
+    category TEXT,
+    language TEXT,
+    topic_id BIGINT,                -- ID ветки (темы) в супергруппе
+    added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_scan_at TIMESTAMPTZ,
+    total_messages BIGINT NOT NULL DEFAULT 0,
+    published_messages BIGINT NOT NULL DEFAULT 0,
+    duplicate_count BIGINT NOT NULL DEFAULT 0,
+    spam_count BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS embeddings (
+    id BIGSERIAL PRIMARY KEY,
+    vector BYTEA NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id BIGSERIAL PRIMARY KEY,
+    source_id BIGINT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,             -- Чистый текст без форматирования
+    fmt_text TEXT,                  -- Красивый текст с HTML-разметкой
+    merged_text TEXT,               -- Текст после слияния нескольких постов
+    text_hash TEXT,                 -- Быстрый хэш текста (Уровень 1 дедупликации)
+    created_at TIMESTAMPTZ NOT NULL,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    embedding_id BIGINT REFERENCES embeddings(id) ON DELETE SET NULL,
+    language TEXT,
+    is_duplicate BOOLEAN NOT NULL DEFAULT FALSE,
+    is_published BOOLEAN NOT NULL DEFAULT FALSE,
+    similarity_score DOUBLE PRECISION,
+    media_group_id TEXT,            -- ID группы медиа (для альбомов)
+    media_type TEXT,                -- Тип медиа: photo, video, document
+    original_message_id BIGINT,     -- ID оригинального сообщения в Telegram
+    published_message_id BIGINT     -- ID опубликованного сообщения в нашем канале (для Reply)
+);
+
+CREATE TABLE IF NOT EXISTS tags (
+    id BIGSERIAL PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    is_allowed BOOLEAN NOT NULL DEFAULT TRUE,
+    is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
+    usage_count BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS message_tags (
+    message_id BIGINT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    tag_id BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (message_id, tag_id)
+);
+
+CREATE TABLE IF NOT EXISTS processing_state (
+    id SMALLINT PRIMARY KEY DEFAULT 1,
+    last_processed_timestamp TIMESTAMPTZ,
+    last_run_status TEXT,
+    last_run_duration DOUBLE PRECISION,
+    last_run_count BIGINT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    id SMALLINT PRIMARY KEY DEFAULT 1,
+    dedupe_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.8,
+    merge_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    batch_size INTEGER NOT NULL DEFAULT 500,
+    dedupe_window_days INTEGER NOT NULL DEFAULT 14,
+    max_merge_chars INTEGER NOT NULL DEFAULT 1800,
+    ai_prompt TEXT,                 -- ПРОМПТ ДЛЯ ИИ
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    action TEXT NOT NULL,
+    payload JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS spam_keywords (
+    id SERIAL PRIMARY KEY,
+    word TEXT UNIQUE NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Индексы для ускорения работы системы
+CREATE INDEX IF NOT EXISTS idx_sources_active_priority ON sources(is_active, priority);
+CREATE INDEX IF NOT EXISTS idx_messages_source_created ON messages(source_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_duplicate ON messages(is_duplicate);
+
+-- Partial index для быстрых запросов только опубликованных сообщений
+CREATE INDEX IF NOT EXISTS idx_messages_published_true ON messages(id) WHERE is_published = TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
+CREATE INDEX IF NOT EXISTS idx_message_tags_tag ON message_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
+
+-- Индекс для молниеносного поиска точных дубликатов по хэшу
+CREATE INDEX IF NOT EXISTS idx_messages_text_hash ON messages(text_hash);
+
+-- Индексы для внешних ключей и частых выборок
+CREATE INDEX IF NOT EXISTS idx_messages_embedding_id ON messages(embedding_id);
+CREATE INDEX IF NOT EXISTS idx_messages_original_message_id ON messages(original_message_id);
+"""
+
+
+async def init_postgres_schema(engine: AsyncEngine) -> None:
+    """Инициализация БД и автоматическая накатка миграций."""
+    async with engine.begin() as conn:
+        # 1. Создаем базовые таблицы, если их нет
+        for statement in [s.strip() for s in SCHEMA_SQL.split(";") if s.strip()]:
+            if statement: # Защита от пустых строк после сплита
+                await conn.execute(text(statement))
+        
+        # 2. АВТО-МИГРАЦИЯ: Добавляем новые колонки в существующие таблицы
+        await conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS fmt_text TEXT;"))
+        await conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type TEXT;"))
+        await conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS original_message_id BIGINT;"))
+        await conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS published_message_id BIGINT;"))
+        await conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_confirmed_spam BOOLEAN NOT NULL DEFAULT FALSE;"))
+        await conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS text_hash TEXT;"))
+        
+        # 3. АВТО-МИГРАЦИЯ: Добавляем topic_id в таблицу sources для работы с ветками
+        await conn.execute(text("ALTER TABLE sources ADD COLUMN IF NOT EXISTS topic_id BIGINT;"))
+        
+        # 4. АВТО-МИГРАЦИЯ: Добавляем ai_prompt в settings
+        await conn.execute(text("ALTER TABLE settings ADD COLUMN IF NOT EXISTS ai_prompt TEXT;"))
+        
+        await conn.execute(text("CREATE TABLE IF NOT EXISTS spam_keywords (id SERIAL PRIMARY KEY, word TEXT UNIQUE NOT NULL, is_active BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());"))
+        
+        # Создаем новые индексы (для уже существующих баз данных)
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_messages_text_hash ON messages(text_hash);"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_messages_embedding_id ON messages(embedding_id);"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_messages_original_message_id ON messages(original_message_id);"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_messages_published_true ON messages(id) WHERE is_published = TRUE;"))
+
+        # 5. Инициализация системных строк, если они отсутствуют
+        await conn.execute(
+            text(
+                """
+                INSERT INTO processing_state(id) VALUES (1)
+                ON CONFLICT (id) DO NOTHING;
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                INSERT INTO settings(id) VALUES (1)
+                ON CONFLICT (id) DO NOTHING;
+                """
+            )
+        )
+
+==================================================
+
+FILE: app\backend\db\session.py
+--------------------------------------------------
+from __future__ import annotations
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from app.config import get_settings
+
+settings = get_settings()
+
+# Создаем асинхронный движок
+engine = create_async_engine(
+    settings.postgres_dsn,
+    future=True,
+    # pool_pre_ping=True проверяет соединение перед каждым запросом. 
+    # Если база перезагрузилась, бот не упадет, а просто переподключится.
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+    # Тайм-аут для предотвращения зависших транзакций
+    pool_recycle=3600
+)
+
+# Настройка фабрики сессий
+SessionLocal = async_sessionmaker(
+    bind=engine,
+    expire_on_commit=False,
+    class_=AsyncSession
+)
+
+async def get_db():
+    """Асинхронный генератор сессий для FastAPI."""
+    async with SessionLocal() as session:
+        try:
+            yield session
+        finally:
+            # Гарантируем закрытие сессии в любом случае
+            await session.close()
+
+==================================================
+
+FILE: app\backend\db\__init__.py
+--------------------------------------------------
+
+
+==================================================
+
+FILE: app\backend\models\schemas.py
+--------------------------------------------------
+from __future__ import annotations
+
+from datetime import datetime
+from pydantic import BaseModel, Field, ConfigDict
+
+# --- ИСТОЧНИКИ (SOURCES) ---
+
+class SourceCreate(BaseModel):
+    """Схема для добавления нового канала-источника."""
+    channel: str
+    title: str | None = None
+    priority: int = 100
+    category: str | None = None
+    language: str | None = None
+    topic_id: int | None = None     # ID ветки (темы) в супергруппе
+
+class SourceUpdate(BaseModel):
+    """Схема для частичного обновления настроек канала."""
+    is_active: bool | None = None
+    priority: int | None = None
+    category: str | None = None
+    language: str | None = None
+    topic_id: int | None = None     # Позволяет изменить ветку (куда постить новости)
+    title: str | None = None
+
+class SourceOut(BaseModel):
+    """Схема для отображения полной информации о канале в админке."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    channel: str
+    is_active: bool
+    priority: int
+    category: str | None
+    language: str | None
+    topic_id: int | None            # Чтобы админка видела привязанную ветку
+    added_at: datetime
+    total_messages: int
+    published_messages: int
+    duplicate_count: int
+    spam_count: int
+
+# --- ТЕГИ (TAGS) ---
+
+class TagToggle(BaseModel):
+    """Схема для управления состоянием тега (разрешить/заблокировать)."""
+    name: str
+    is_allowed: bool | None = None
+    is_blocked: bool | None = None
+
+class TagMerge(BaseModel):
+    """Схема для объединения двух тегов в один."""
+    from_name: str
+    to_name: str
+
+# --- СООБЩЕНИЯ (MESSAGES) ---
+
+class MessageOut(BaseModel):
+    """Схема для отображения постов в базе данных (Mini App)."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    source_id: int
+    text: str                       # Чистый текст
+    fmt_text: str | None            # Текст с HTML разметкой
+    merged_text: str | None         # Результат работы ИИ / Слияния
+    created_at: datetime
+    processed_at: datetime | None   # Может быть None, если воркер еще не обработал
+    language: str | None
+    is_duplicate: bool
+    is_published: bool
+    similarity_score: float | None
+    media_group_id: str | None      # Для альбомов
+    media_type: str | None          # photo, video, document, voice
+    original_message_id: int | None # ID сообщения в Telegram
+
+# --- ЗАПРОСЫ (REQUESTS) ---
+
+class SearchRequest(BaseModel):
+    """Схема для выполнения семантического поиска через FAISS."""
+    query: str
+    limit: int = Field(default=20, le=100)
+    source_id: int | None = None
+    tag: str | None = None
+
+class ProcessingRunRequest(BaseModel):
+    """Схема для запуска воркера вручную на X часов назад."""
+    hours: int | None = None
+
+# --- НАСТРОЙКИ (SETTINGS) ---
+
+class SettingsOut(BaseModel):
+    """Схема для отправки настроек на фронтенд (Mini App)."""
+    model_config = ConfigDict(from_attributes=True)
+
+    dedupe_threshold: float
+    merge_enabled: bool
+    batch_size: int
+    dedupe_window_days: int
+    max_merge_chars: int
+    ai_prompt: str | None           # Добавлено для фронтенда
+
+class SettingsUpdate(BaseModel):
+    """Схема для обновления глобальных настроек системы."""
+    dedupe_threshold: float | None = None
+    merge_enabled: bool | None = None
+    batch_size: int | None = None
+    dedupe_window_days: int | None = None
+    max_merge_chars: int | None = None
+    ai_prompt: str | None = None    # Добавлено для фронтенда
+    
+class SpamKeywordCreate(BaseModel):
+    word: str
+
+class SpamKeywordUpdate(BaseModel):
+    is_active: bool
+
+class SpamKeywordOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    word: str
+    is_active: bool
+
+==================================================
+
+FILE: app\backend\models\__init__.py
+--------------------------------------------------
+
+
+==================================================
+
+FILE: app\backend\security\auth.py
+--------------------------------------------------
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import logging
+from typing import Any
+
+from fastapi import Header, HTTPException, status
+from app.config import get_settings
+
+# Загружаем настройки
+settings = get_settings()
+# Настраиваем логгер
+logger = logging.getLogger(__name__)
+
+def verify_telegram_login(payload: dict[str, Any]) -> bool:
+    """
+    Полная проверка цифровой подписи Telegram.
+    Поддерживает два алгоритма шифрования:
+    1. WebApp (HMAC-SHA256 с ключом WebAppData) - для браузера/телефона.
+    2. Bot (HMAC-SHA256 с ключом SHA256(Token)) - для скриптов.
+    """
+    try:
+        # Если в данных нет хеша - проверять нечего
+        if "hash" not in payload:
+            logger.warning("Auth Check: 'hash' field missing in payload.")
+            return False
+        
+        check_hash = payload["hash"]
+        
+        # Сортируем ключи по алфавиту (требование Telegram)
+        # Исключаем поле hash из проверки
+        data_check_arr = []
+        for k, v in sorted(payload.items()):
+            if k != "hash":
+                # Важно: приводим значения к строке, так как auth_date может быть int
+                data_check_arr.append(f"{k}={v}")
+        
+        data_check_string = "\n".join(data_check_arr)
+        data_check_bytes = data_check_string.encode()
+
+        # --- АЛГОРИТМ 1: WebApp (Стандартный) ---
+        secret_key_webapp = hmac.new(
+            b"WebAppData", 
+            settings.telegram_bot_token.encode(), 
+            hashlib.sha256
+        ).digest()
+        
+        hash_webapp = hmac.new(
+            secret_key_webapp, 
+            data_check_bytes, 
+            hashlib.sha256
+        ).hexdigest()
+
+        if hmac.compare_digest(hash_webapp, check_hash):
+            return True
+
+        # --- АЛГОРИТМ 2: Bot (Альтернативный) ---
+        secret_key_bot = hashlib.sha256(
+            settings.telegram_bot_token.encode()
+        ).digest()
+
+        hash_bot = hmac.new(
+            secret_key_bot, 
+            data_check_bytes, 
+            hashlib.sha256
+        ).hexdigest()
+
+        if hmac.compare_digest(hash_bot, check_hash):
+            return True
+
+        logger.warning(f"Auth Check: Signature mismatch. Hash: {check_hash}")
+        return False
+
+    except Exception as e:
+        logger.error(f"Auth Check: Internal error during verification: {e}")
+        return False
+
+
+async def telegram_auth_guard(x_telegram_auth: str | None = Header(None)) -> int:
+    """
+    Главный шлюз безопасности API.
+    
+    Логика работы:
+    1. Проверяем, запущен ли сервер локально (Dev Mode).
+    2. Пытаемся честно проверить подпись Telegram.
+    3. Если подпись верна -> пускаем.
+    4. Если подпись НЕ верна (или её нет), НО мы на Localhost -> пускаем Админа (Bypass).
+    5. Иначе -> Ошибка 403.
+    """
+    
+    # 1. ОПРЕДЕЛЕНИЕ РЕЖИМА РАЗРАБОТКИ (LOCALHOST)
+    base_url = settings.miniapp_base_url or ""
+    is_dev_mode = any(h in base_url for h in ["localhost", "127.0.0.1", "0.0.0.0"])
+    
+    # Получаем ID главного админа для фоллбэка
+    fallback_admin_id = 0
+    if settings.admin_ids:
+        fallback_admin_id = next(iter(settings.admin_ids))
+
+    # Переменная для хранения найденного ID
+    user_id: int | None = None
+    auth_error_msg = "Unknown error"
+
+    # 2. ПОПЫТКА ЧЕСТНОЙ АВТОРИЗАЦИИ
+    if x_telegram_auth and x_telegram_auth != "null" and x_telegram_auth != "":
+        try:
+            # Парсим JSON
+            auth_data = json.loads(x_telegram_auth)
+            
+            # Проверяем подпись
+            if verify_telegram_login(auth_data):
+                # Извлекаем данные пользователя
+                user_field = auth_data.get("user")
+                
+                user_data = {}
+                if isinstance(user_field, str):
+                    user_data = json.loads(user_field)
+                elif isinstance(user_field, dict):
+                    user_data = user_field
+                else:
+                    # Иногда ID лежит в корне (для ботов)
+                    user_data = auth_data
+                
+                if user_data.get("id"):
+                    user_id = int(user_data.get("id"))
+            else:
+                auth_error_msg = "Invalid signature"
+                
+        except json.JSONDecodeError:
+            auth_error_msg = "Invalid JSON format"
+        except Exception as e:
+            auth_error_msg = f"Exception: {str(e)}"
+    else:
+        auth_error_msg = "Header missing or empty"
+
+    # 3. ЛОГИКА СПАСЕНИЯ (DEV MODE BYPASS)
+    # Если честная авторизация не прошла (user_id всё еще None)
+    if user_id is None:
+        if is_dev_mode:
+            if fallback_admin_id == 0:
+                logger.error("CRITICAL: Localhost detected, but ADMIN_USER_IDS is empty in .env!")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Server config error: No admins"
+                )
+            
+            # Мы дома, пускаем админа без проверки
+            # logger.info(f"Auth Bypass: Localhost detected. Reason: {auth_error_msg}. Logging in as {fallback_admin_id}")
+            return int(fallback_admin_id)
+        else:
+            # Мы на боевом сервере - никаких поблажек
+            logger.warning(f"Auth Failed: {auth_error_msg}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Authentication failed: {auth_error_msg}"
+            )
+
+    # 4. ФИНАЛЬНАЯ ПРОВЕРКА ПРАВ (WHITELIST)
+    # Даже если подпись верна, пользователь должен быть в списке админов
+    str_user_id = str(user_id)
+    str_admin_ids = {str(uid) for uid in settings.admin_ids}
+
+    if str_user_id not in str_admin_ids:
+        # Если мы на локалхосте, но зашли под левым ID -> всё равно пускаем главного админа (для удобства)
+        if is_dev_mode:
+             return int(fallback_admin_id)
+             
+        logger.warning(f"Access Denied: User {str_user_id} is not in admin list.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not an administrator"
+        )
+
+    return int(user_id)
+
+==================================================
+
+FILE: app\backend\security\__init__.py
+--------------------------------------------------
+
+
+==================================================
+
+FILE: app\backend\services\ai_service.py
+--------------------------------------------------
+import logging
+import asyncio
+import json
+from typing import Optional
+import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+from app.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+class AIService:
+    def __init__(self, client: Optional[httpx.AsyncClient] = None, custom_prompt: str = None):
+        self.settings = get_settings()
+        self.api_key = self.settings.groq_api_key
+        # Рекомендуется Llama-3.3-70b-versatile, так как она отлично работает с JSON
+        self.model = "llama-3.3-70b-versatile" 
+        self.url = "https://api.groq.com/openai/v1/chat/completions"
+        
+        self._client = client
+        self.custom_prompt = custom_prompt
+        
+        # ЗАЩИТА ОТ ЛИМИТОВ GROQ (Максимум 3 одновременных запроса)
+        self.semaphore = asyncio.Semaphore(3)
+
+    def _build_system_prompt(self, has_media: bool) -> str:
+        """Собирает системный промпт с требованием строгого JSON-ответа."""
+        
+        base_rules = (
+            "Ты — профессиональный AI-редактор и аналитик новостей.\n"
+            "Твоя задача: проанализировать сырой текст, сделать качественный рерайт, "
+            "присвоить теги, категорию и оценить важность новости.\n\n"
+            "ПРАВИЛА РЕРАЙТА:\n"
+            "- Сохрани 100% фактов, имен и дат.\n"
+            "- В исходном тексте могут быть HTML-ссылки (вида <a href=\"...\">текст</a>). Ты ОБЯЗАН перенести эти теги <a> в свой рерайт.\n"
+            "- Стиль: инфостиль, без воды.\n\n"
+        )
+        
+        if has_media:
+            base_rules += "Текст будет подписью к картинке. Сделай его коротким (до 800 символов), 2-3 абзаца.\n\n"
+        else:
+            base_rules += "Текст будет обычным постом. Сделай его читаемым (1000-1500 символов), разбей на абзацы.\n\n"
+
+        # Требование JSON формата
+        json_rules = (
+            "ВЫХОДНОЙ ФОРМАТ:\n"
+            "Ты ОБЯЗАН вернуть ответ в формате строгого JSON. Никакого лишнего текста до или после JSON.\n"
+            "Структура JSON:\n"
+            "{\n"
+            '  "rewrite": "Готовый переписанный текст новости",\n'
+            '  "tags": ["тег1", "тег2", "тег3"],\n'
+            '  "category": "одна из: politics, economy, tech, crypto, military, sports, incident, other",\n'
+            '  "importance": 0.0 до 1.0 (где 1.0 - это срочная мировая новость, а 0.1 - локальный мусор),\n'
+            '  "is_spam": true или false (true если это реклама казино, ставок, скам-крипты, продажа курсов),\n'
+            '  "spam_reason": "краткая причина, если is_spam=true, иначе null"\n'
+            "}\n"
+        )
+        
+        return base_rules + json_rules
+
+    def _build_update_prompt(self) -> str:
+        """Промпт для генерации дополнения (Reply) к старой новости."""
+        return (
+            "Ты — профессиональный новостной редактор.\n"
+            "Сравни СТАРУЮ новость и НОВУЮ новость, найди новые факты и напиши короткое дополнение.\n\n"
+            "ПРАВИЛА:\n"
+            "1. Только новые факты (до 500 символов).\n"
+            "2. Начни со слов: ⚡️ UPD:\n"
+            "3. Если в новой новости НЕТ новых фактов, ответь ровно одним словом: SKIP\n"
+        )
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+        reraise=True
+    )
+    async def _make_request(self, client: httpx.AsyncClient, payload: dict) -> httpx.Response:
+        response = await client.post(
+            self.url,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            },
+            json=payload,
+            timeout=45.0
+        )
+        response.raise_for_status() 
+        return response
+
+    async def edit_news(self, text: str, has_media: bool = False) -> dict | None:
+        """Главный метод для рерайта и анализа текста. Возвращает словарь (JSON)."""
+        if not self.api_key or not text or len(text.strip()) < 5:
+            return None 
+
+        system_prompt = self._build_system_prompt(has_media)
+        
+        payload = {
+            "model": self.model,
+            "messages":[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Сырой текст:\n\n{text}"}
+            ],
+            "temperature": 0.2, # Низкая температура для стабильного JSON
+            "max_tokens": 1500,
+            "response_format": {"type": "json_object"} # ФОРСИРУЕМ JSON
+        }
+
+        async with self.semaphore:
+            try:
+                if self._client:
+                    response = await self._make_request(self._client, payload)
+                else:
+                    async with httpx.AsyncClient() as temp_client:
+                        response = await self._make_request(temp_client, payload)
+                
+                data = response.json()
+                choices = data.get('choices',[])
+                if not choices:
+                    return None
+                    
+                result_text = choices[0].get('message', {}).get('content', '')
+                
+                if not result_text:
+                    return None
+                    
+                # Очистка от маркдауна (если ИИ обернул ответ в ```json ... ```)
+                result_text = result_text.strip('` \n').replace('json\n', '', 1)
+                    
+                # Парсим JSON-строку в Python словарь
+                result_json = json.loads(result_text)
+                
+                # 1. Проверка структуры JSON
+                required_keys = ["rewrite", "tags", "category", "importance"]
+                for key in required_keys:
+                    if key not in result_json:
+                        logger.error(f"AI Service: Отсутствует обязательное поле '{key}' в ответе ИИ.")
+                        return None
+                
+                # 2. Ограничить длину rewrite (защита от галлюцинаций с бесконечным текстом)
+                rewrite = result_json.get("rewrite", "")
+                if rewrite and len(rewrite) > 2000:
+                    result_json["rewrite"] = rewrite[:2000]
+                    
+                # 3. Нормализовать importance (защита от выхода за границы и неверных типов данных)
+                try:
+                    importance = float(result_json.get("importance", 0.0))
+                    result_json["importance"] = max(0.0, min(1.0, importance))
+                except (ValueError, TypeError):
+                    logger.warning("AI Service: ИИ вернул нечисловое значение для importance, установлено 0.5")
+                    result_json["importance"] = 0.5
+                    
+                return result_json
+
+            except json.JSONDecodeError as e:
+                logger.error(f"AI Service: ИИ вернул невалидный JSON: {e}\nТекст ответа: {result_text}")
+                return None
+            except Exception as e:
+                logger.error(f"Ошибка в AI Service (edit_news): {e}")
+                return None
+
+    async def generate_update(self, old_text: str, new_text: str) -> str | None:
+        """Метод для создания дополнения (Reply). Остается как было (возвращает строку)."""
+        if not self.api_key or not old_text or not new_text:
+            return None
+
+        system_prompt = self._build_update_prompt()
+        user_content = f"СТАРАЯ НОВОСТЬ:\n{old_text}\n\nНОВАЯ НОВОСТЬ:\n{new_text}"
+        
+        payload = {
+            "model": self.model,
+            "messages":[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            "temperature": 0.3,
+            "max_tokens": 800
+        }
+
+        async with self.semaphore:
+            try:
+                if self._client:
+                    response = await self._make_request(self._client, payload)
+                else:
+                    async with httpx.AsyncClient() as temp_client:
+                        response = await self._make_request(temp_client, payload)
+                
+                data = response.json()
+                choices = data.get('choices',[])
+                if not choices:
+                    return None
+                    
+                result = choices[0].get('message', {}).get('content', '')
+                result = result.strip() if result else None
+                
+                if result == "SKIP":
+                    return None
+                    
+                return result
+
+            except Exception as e:
+                logger.error(f"Ошибка при генерации апдейта: {e}")
+                return None
+
+==================================================
+
+FILE: app\backend\services\data_service.py
+--------------------------------------------------
+from __future__ import annotations
+
+import json
+from typing import Any
+from sqlalchemy import text
+from datetime import datetime, timezone
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+class DataService:
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+
+    async def log_action(self, user_id: int, action: str, payload: dict) -> None:
+        """Логирование действий администратора в таблицу audit_log."""
+        await self.db.execute(
+            text("INSERT INTO audit_log(user_id, action, payload) VALUES (:u, :a, CAST(:p AS JSONB))"),
+            {"u": user_id, "a": action, "p": json.dumps(payload)},
+        )
+        await self.db.commit()
+
+    async def list_sources(self) -> list[dict]:
+        """Получение списка всех каналов-источников со всей статистикой."""
+        rows = await self.db.execute(text("SELECT * FROM sources ORDER BY priority, id"))
+        return [dict(row._mapping) for row in rows.fetchall()]
+
+    async def add_source(self, channel: str, priority: int, category: str | None, language: str | None, topic_id: int | None = None, title: str | None = None) -> dict:
+        """
+        Добавление нового источника. 
+        Если канал уже существует, обновляет его приоритет, ветку (topic_id) и название (title).
+        """
+        row = await self.db.execute(
+            text(
+                """
+                INSERT INTO sources(channel, priority, category, language, topic_id, title)
+                VALUES (:c, :p, :cat, :lang, :tid, :title)
+                ON CONFLICT(channel) DO UPDATE SET 
+                    priority=EXCLUDED.priority,
+                    topic_id=COALESCE(EXCLUDED.topic_id, sources.topic_id),
+                    title=COALESCE(EXCLUDED.title, sources.title)
+                RETURNING *
+                """
+            ),
+            {"c": channel, "p": priority, "cat": category, "lang": language, "tid": topic_id, "title": title},
+        )
+        await self.db.commit()
+        return dict(row.fetchone()._mapping)
+
+    async def update_source(self, source_id: int, values: dict) -> None:
+        """Частичное обновление параметров источника (включая ветку)."""
+        allowed_fields = {"is_active", "priority", "category", "language", "topic_id"}
+        values = {k: v for k, v in values.items() if k in allowed_fields}
+        if not values:
+            return
+        set_parts = [f"{k}=:{k}" for k in values.keys()]
+        values["id"] = source_id
+        await self.db.execute(text(f"UPDATE sources SET {', '.join(set_parts)} WHERE id=:id"), values)
+        await self.db.commit()
+
+    async def remove_source(self, source_id: int) -> None:
+        """Удаление источника из системы (все сообщения удалятся каскадно)."""
+        await self.db.execute(text("DELETE FROM sources WHERE id=:id"), {"id": source_id})
+        await self.db.commit()
+
+    async def upsert_tag(self, name: str, allowed: bool | None = None, blocked: bool | None = None) -> None:
+        """Создание или обновление статуса тега."""
+        await self.db.execute(
+            text(
+                """
+                INSERT INTO tags(name, is_allowed, is_blocked) VALUES (:n, COALESCE(:a, TRUE), COALESCE(:b, FALSE))
+                ON CONFLICT(name) DO UPDATE SET
+                  is_allowed = COALESCE(:a, tags.is_allowed),
+                  is_blocked = COALESCE(:b, tags.is_blocked)
+                """
+            ),
+            {"n": name, "a": allowed, "b": blocked},
+        )
+        await self.db.commit()
+
+    async def list_tags(self) -> list[dict]:
+        """Список всех тегов с количеством их использований."""
+        rows = await self.db.execute(text("SELECT * FROM tags ORDER BY usage_count DESC, name"))
+        return [dict(row._mapping) for row in rows.fetchall()]
+
+    async def merge_tags(self, from_name: str, to_name: str) -> None:
+        """Перенос всех сообщений с одного тега на другой и удаление старого."""
+        await self.db.execute(text("INSERT INTO tags(name) VALUES (:n) ON CONFLICT(name) DO NOTHING"), {"n": to_name})
+        await self.db.execute(
+            text(
+                """
+                INSERT INTO message_tags(message_id, tag_id)
+                SELECT mt.message_id, t_to.id
+                FROM message_tags mt
+                JOIN tags t_from ON mt.tag_id=t_from.id
+                JOIN tags t_to ON t_to.name=:to_name
+                WHERE t_from.name=:from_name
+                ON CONFLICT DO NOTHING
+                """
+            ),
+            {"to_name": to_name, "from_name": from_name},
+        )
+        await self.db.execute(
+            text("DELETE FROM message_tags WHERE tag_id IN (SELECT id FROM tags WHERE name=:from_name)"),
+            {"from_name": from_name},
+        )
+        await self.db.execute(text("DELETE FROM tags WHERE name=:from_name"), {"from_name": from_name})
+        await self.db.commit()
+
+    async def list_messages(self, source_id: int | None, tag: str | None, date_from: datetime | None, date_to: datetime | None, limit: int = 200) -> list[dict]:
+        """
+        Получение списка сообщений. 
+        ВАЖНО: используется CAST для стабильной работы с NULL параметрами в asyncpg.
+        """
+        query = """
+        SELECT m.* FROM messages m
+        LEFT JOIN message_tags mt ON mt.message_id = m.id
+        LEFT JOIN tags t ON t.id = mt.tag_id
+        WHERE (CAST(:source_id AS BIGINT) IS NULL OR m.source_id=CAST(:source_id AS BIGINT))
+          AND (CAST(:tag AS TEXT) IS NULL OR t.name=CAST(:tag AS TEXT))
+          AND (CAST(:date_from AS TIMESTAMPTZ) IS NULL OR m.created_at >= CAST(:date_from AS TIMESTAMPTZ))
+          AND (CAST(:date_to AS TIMESTAMPTZ) IS NULL OR m.created_at <= CAST(:date_to AS TIMESTAMPTZ))
+        ORDER BY m.created_at DESC
+        LIMIT :limit
+        """
+        rows = await self.db.execute(
+            text(query), 
+            {"source_id": source_id, "tag": tag, "date_from": date_from, "date_to": date_to, "limit": limit}
+        )
+        return [dict(row._mapping) for row in rows.fetchall()]
+
+    async def delete_message(self, message_id: int) -> None:
+        """Удаление конкретного сообщения."""
+        await self.db.execute(text("DELETE FROM messages WHERE id=:id"), {"id": message_id})
+        await self.db.commit()
+
+    async def mark_published(self, message_id: int) -> None:
+        """Ручная пометка сообщения как опубликованного."""
+        await self.db.execute(text("UPDATE messages SET is_published=TRUE WHERE id=:id"), {"id": message_id})
+        await self.db.commit()
+
+    async def get_processing_state(self) -> dict:
+        """Состояние последней работы воркера."""
+        row = await self.db.execute(text("SELECT * FROM processing_state WHERE id=1"))
+        found = row.fetchone()
+        return dict(found._mapping) if found else {}
+
+    async def set_processing_state(self, status: str, duration: float, count: int, timestamp: datetime | None) -> None:
+        """Обновление глобального чекпоинта и статуса запуска."""
+        await self.db.execute(
+            text(
+                """
+                UPDATE processing_state
+                SET last_run_status=:s,
+                    last_run_duration=:d,
+                    last_run_count=:c,
+                    last_processed_timestamp=COALESCE(:ts, last_processed_timestamp),
+                    updated_at=:updated
+                WHERE id=1
+                """
+            ),
+            {"s": status, "d": duration, "c": count, "ts": timestamp, "updated": datetime.now(timezone.utc)},
+        )
+        await self.db.commit()
+
+    async def get_settings(self) -> dict:
+        """Загрузка глобальных настроек из БД."""
+        row = await self.db.execute(text("SELECT * FROM settings WHERE id=1"))
+        found = row.fetchone()
+        return dict(found._mapping) if found else {}
+
+    async def update_settings(self, values: dict) -> None:
+        """Обновление настроек дедупликации и слияния."""
+        allowed_fields = {"dedupe_threshold", "merge_enabled", "batch_size", "dedupe_window_days", "max_merge_chars"}
+        values = {k: v for k, v in values.items() if k in allowed_fields}
+        if not values:
+            return
+        set_parts = [f"{k}=:{k}" for k in values.keys()]
+        values["updated_at"] = datetime.now(timezone.utc)
+        sql = f"UPDATE settings SET {', '.join(set_parts)}, updated_at=:updated_at WHERE id=1"
+        await self.db.execute(text(sql), values)
+        await self.db.commit()
+    async def list_spam_keywords(self) -> list[dict]:
+        """Получить список всех стоп-слов."""
+        rows = await self.db.execute(text("SELECT * FROM spam_keywords ORDER BY word"))
+        return [dict(row._mapping) for row in rows.fetchall()]
+
+    async def add_spam_keyword(self, word: str) -> dict:
+        """Добавить новое стоп-слово."""
+        row = await self.db.execute(
+            text("INSERT INTO spam_keywords(word) VALUES (:w) ON CONFLICT (word) DO UPDATE SET is_active=TRUE RETURNING *"),
+            {"w": word.lower().strip()}
+        )
+        await self.db.commit()
+        return dict(row.fetchone()._mapping)
+
+    async def toggle_spam_keyword(self, keyword_id: int, is_active: bool) -> None:
+        """Включить или выключить стоп-слово."""
+        await self.db.execute(
+            text("UPDATE spam_keywords SET is_active=:a WHERE id=:id"),
+            {"a": is_active, "id": keyword_id}
+        )
+        await self.db.commit()
+
+    async def remove_spam_keyword(self, keyword_id: int) -> None:
+        """Удалить слово из фильтра совсем."""
+        await self.db.execute(text("DELETE FROM spam_keywords WHERE id=:id"), {"id": keyword_id})
+        await self.db.commit()
+
+    async def get_active_spam_keywords(self) -> set[str]:
+        """Получить только активные слова (для воркера)."""
+        rows = await self.db.execute(text("SELECT word FROM spam_keywords WHERE is_active=TRUE"))
+        return {row.word for row in rows.fetchall()}
+        
+    async def mark_confirmed_spam(self, message_id: int) -> None:
+        """Помечает сообщение как эталонный спам для обучения фильтра."""
+        await self.db.execute(
+            text("UPDATE messages SET is_confirmed_spam = TRUE, is_published = FALSE WHERE id = :id"),
+            {"id": message_id}
+        )
+        # Увеличиваем счетчик спама у источника
+        await self.db.execute(
+            text("""
+                UPDATE sources SET spam_count = spam_count + 1 
+                WHERE id = (SELECT source_id FROM messages WHERE id = :id)
+            """),
+            {"id": message_id}
+        )
+        await self.db.commit()
+
+    async def analytics_daily(self) -> list[dict]:
+        """Агрегированная статистика по дням для дашборда."""
+        rows = await self.db.execute(
+            text(
+                """
+                SELECT date_trunc('day', created_at) AS day,
+                       count(*) AS total,
+                       sum(CASE WHEN is_duplicate THEN 1 ELSE 0 END) AS duplicates,
+                       sum(CASE WHEN is_published THEN 1 ELSE 0 END) AS published
+                FROM messages
+                GROUP BY 1
+                ORDER BY 1 DESC
+                LIMIT 30
+                """
+            )
+        )
+        return [dict(row._mapping) for row in rows.fetchall()]
+
+==================================================
+
+FILE: app\backend\services\embedding_service.py
+--------------------------------------------------
+from __future__ import annotations
+
+import threading
+import logging
+from collections.abc import Sequence
+import numpy as np
+from sentence_transformers import SentenceTransformer
+
+logger = logging.getLogger(__name__)
+
+class EmbeddingService:
+    """
+    Потокобезопасный синглтон для нейросети.
+    Превращает текст в векторы (эмбеддинги).
+    """
+    _instance: EmbeddingService | None = None
+    _instance_lock = threading.Lock()
+
+    def __init__(self, model_name: str, batch_size: int) -> None:
+        # Защита от повторной инициализации внутри синглтона
+        if hasattr(self, '_initialized'): return
+        
+        self.model_name = model_name
+        self.batch_size = batch_size
+        self._model: SentenceTransformer | None = None
+        self._model_lock = threading.Lock()
+        self._initialized = True
+
+    @classmethod
+    def get_instance(cls, model_name: str, batch_size: int) -> EmbeddingService:
+        if cls._instance is None:
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = cls(model_name=model_name, batch_size=batch_size)
+        else:
+            # Позволяем обновлять размер батча на лету
+            cls._instance.batch_size = batch_size
+        return cls._instance
+
+    def _ensure_model(self) -> SentenceTransformer:
+        """Загружает модель только тогда, когда она реально понадобилась."""
+        if self._model is None:
+            with self._model_lock:
+                if self._model is None:
+                    logger.info(f"Loading transformer model: {self.model_name}")
+                    # device='cpu' принудительно, так как в Docker обычно нет GPU
+                    self._model = SentenceTransformer(self.model_name, device='cpu')
+        return self._model
+
+    def encode(self, texts: Sequence[str]) -> np.ndarray:
+        """Кодирует тексты в векторы. Возвращает массив float32."""
+        if not texts:
+            return np.empty((0, 384), dtype=np.float32)
+            
+        model = self._ensure_model()
+        vectors = model.encode(
+            texts,
+            convert_to_numpy=True,
+            normalize_embeddings=True, # Важно для точного поиска дублей
+            batch_size=self.batch_size,
+            show_progress_bar=False
+        )
+        return np.asarray(vectors, dtype=np.float32)
+
+==================================================
+
+FILE: app\backend\services\faiss_store.py
+--------------------------------------------------
+from __future__ import annotations
+
+import logging
+import threading
+from pathlib import Path
+
+import faiss
+import numpy as np
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
+
+class FaissStore:
+    """
+    Управление векторной базой FAISS.
+    Использует IndexIDMap2 для связи векторов с ID сообщений из БД.
+    """
+    _instance = None
+    _lock = threading.Lock()
+
+    @classmethod
+    def get_instance(cls, index_path: Path, dim: int = 384) -> FaissStore:
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls(index_path, dim)
+        return cls._instance
+
+    def __init__(self, index_path: Path, dim: int = 384) -> None:
+        if hasattr(self, '_initialized'): return
+        
+        self.index_path = index_path
+        self.dim = dim
+        # Загружаем или создаем новый
+        self.index = self._load_or_create()
+        self._initialized = True
+
+    def _new_index(self) -> faiss.IndexIDMap2:
+        """Создает новый пустой индекс с поддержкой ID."""
+        # IndexFlatIP — поиск по косинусному сходству
+        base_index = faiss.IndexFlatIP(self.dim)
+        # Оборачиваем в IDMap2, чтобы можно было добавлять свои ID (из базы данных)
+        return faiss.IndexIDMap2(base_index)
+
+    def _load_or_create(self) -> faiss.IndexIDMap2:
+        """Загружает индекс с диска и проверяет его тип."""
+        if not self.index_path.exists():
+            logger.info("FAISS index file not found. Creating fresh index.")
+            return self._new_index()
+
+        try:
+            logger.info(f"Loading FAISS index from {self.index_path}")
+            loaded = faiss.read_index(str(self.index_path))
+            
+            # ПРОВЕРКА ТИПА (ТО, ЧТО БЫЛО СЛОМАНО):
+            # Если индекс загрузился без поддержки ID, принудительно оборачиваем его
+            if not isinstance(loaded, faiss.IndexIDMap2):
+                logger.warning("Loaded index is not an IDMap. Wrapping it now.")
+                new_idmap = self._new_index()
+                if loaded.ntotal > 0:
+                    # Если в нем были данные, переносим их (редкий случай)
+                    # Но обычно лучше просто пересобрать из БД
+                    logger.error("Index type mismatch with data. Rebuild recommended.")
+                return new_idmap
+                
+            return loaded
+        except Exception as e:
+            logger.error(f"Failed to load FAISS index: {e}. Creating fresh one.")
+            return self._new_index()
+
+    @property
+    def ntotal(self) -> int:
+        """Возвращает общее количество векторов в памяти."""
+        return int(self.index.ntotal)
+
+    def add_with_ids(self, vectors: np.ndarray, ids: np.ndarray) -> None:
+        """Добавляет векторы в индекс, привязывая их к ID из PostgreSQL."""
+        if vectors.size == 0 or ids.size == 0:
+            return
+            
+        vectors_f32 = np.ascontiguousarray(vectors, dtype=np.float32)
+        ids_i64 = np.ascontiguousarray(ids, dtype=np.int64)
+        
+        if vectors_f32.shape[1] != self.dim:
+            raise ValueError(f"Vector dimension mismatch: {vectors_f32.shape[1]} != {self.dim}")
+            
+        with self._lock: # <--- ДОБАВЛЕНО
+            self.index.add_with_ids(vectors_f32, ids_i64)
+
+    def search(self, vectors: np.ndarray, k: int = 5) -> tuple[np.ndarray, np.ndarray]:
+        """Ищет K самых похожих сообщений."""
+        if self.ntotal == 0:
+            # Если база пуста, возвращаем пустые результаты
+            return (np.zeros((vectors.shape[0], k), dtype=np.float32), 
+                    -np.ones((vectors.shape[0], k), dtype=np.int64))
+            
+        query = np.ascontiguousarray(vectors, dtype=np.float32)
+        return self.index.search(query, k)
+
+    def persist(self) -> None:
+        """Сохраняет индекс из оперативной памяти на жесткий диск."""
+        try:
+            self.index_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = self.index_path.with_suffix(".tmp")
+            
+            with self._lock: # <--- ДОБАВЛЕНО
+                faiss.write_index(self.index, str(tmp_path))
+                
+            tmp_path.replace(self.index_path)
+            logger.info(f"FAISS index saved. Total vectors: {self.ntotal}")
+        except Exception as e:
+            logger.error(f"Failed to persist FAISS index: {e}")
+
+    async def rebuild_from_db(self, db: AsyncSession) -> None:
+        """Полная очистка и пересборка индекса из данных в PostgreSQL (Батчинг)."""
+        logger.info("Rebuilding FAISS index from database...")
+        
+        with self._lock:
+            self.index = self._new_index()
+        
+        # Загружаем эмбеддинги порциями по 10 000, чтобы не уронить сервер по памяти
+        batch_size = 10000
+        offset = 0
+        
+        while True:
+            rows = await db.execute(
+                text("SELECT id, vector FROM embeddings ORDER BY id LIMIT :limit OFFSET :offset"),
+                {"limit": batch_size, "offset": offset}
+            )
+            data = rows.fetchall()
+            
+            if not data:
+                break
+                
+            ids = np.asarray([int(row.id) for row in data], dtype=np.int64)
+            vectors = np.vstack([np.frombuffer(row.vector, dtype=np.float32) for row in data]).astype(np.float32)
+            
+            if vectors.shape[1] != self.dim:
+                logger.error(f"Database vectors dimension mismatch at offset {offset}!")
+                break
+                
+            self.add_with_ids(vectors, ids)
+            offset += batch_size
+            logger.info(f"Loaded {offset} vectors into FAISS...")
+            
+        self.persist()
+
+==================================================
+
+FILE: app\backend\services\nlp.py
+--------------------------------------------------
+from __future__ import annotations
+
+import logging
+import re
+import hashlib
+from collections import Counter, deque
+from dataclasses import dataclass
+from typing import Protocol
+
+import numpy as np
+from langdetect import detect
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class ProcessedText:
+    """Результат предварительной обработки текста."""
+    cleaned: str
+    language: str
+
+
+class Preprocessor:
+    """Очистка текста от лишних пробелов и определение языка."""
+    _whitespace = re.compile(r"\s+")
+
+    def run(self, text: str) -> ProcessedText:
+        # Убираем двойные пробелы, переносы и лишние символы по краям
+        cleaned = self._whitespace.sub(" ", text).strip()
+        language = "unknown"
+        
+        # Защита: langdetect часто ошибается или падает на слишком коротких текстах
+        if len(cleaned) >= 20:
+            try:
+                # Определяем язык (нужно для ИИ и фильтров)
+                language = detect(cleaned)
+            except Exception:
+                language = "unknown"
+                
+        return ProcessedText(cleaned=cleaned, language=language)
+
+
+class SpamFilter:
+    """Динамический фильтр спама."""
+    link_pattern = re.compile(r"https?://")
+    invite_link_pattern = re.compile(r"t\.me/(\+?|joinchat/)") 
+
+    def __init__(self, active_keywords: set[str], min_words: int, max_links: int, repeat_threshold: int):
+        self.active_keywords = active_keywords
+        self.min_words = min_words
+        self.max_links = max_links
+        self.repeat_threshold = repeat_threshold
+        
+        # ОПТИМИЗАЦИЯ: Предкомпилируем все стоп-слова один раз при создании фильтра
+        self._compiled_keywords = [
+            re.compile(rf"\b{re.escape(word)}\b", re.IGNORECASE) 
+            for word in self.active_keywords
+        ]
+
+    def is_spam(self, text: str) -> bool:
+        text_lower = text.lower()
+        words = text_lower.split()
+        
+        # 1. Базовые правила (длина и ссылки)
+        if len(words) < self.min_words:
+            return True
+        if len(self.link_pattern.findall(text)) > self.max_links:
+            return True
+        if self.invite_link_pattern.search(text_lower):
+            return True
+
+        # 2. ГИБКАЯ ПРОВЕРКА ПО ТВОИМ СЛОВАМ (УМНАЯ И БЫСТРАЯ)
+        for pattern in self._compiled_keywords:
+            if pattern.search(text_lower):
+                return True
+
+        return False
+
+
+class MergeEngine:
+    """Слияние нескольких похожих текстов в один связный черновик."""
+
+    def __init__(self, max_chars: int = 1800) -> None:
+        self.max_chars = max_chars
+
+    @staticmethod
+    def _unique_paragraphs(text: str) -> list[str]:
+        """Разбивает текст на абзацы и удаляет дубликаты внутри одного текста."""
+        seen: set[str] = set()
+        result: list[str] = []
+        for paragraph in [p.strip() for p in text.split("\n") if p.strip()]:
+            key = paragraph.lower()
+            if key not in seen:
+                seen.add(key)
+                result.append(paragraph)
+        return result
+
+    def merge(self, texts: list[str], sources: list[str]) -> str:
+        """Объединяет список текстов, убирая повторы."""
+        if not texts:
+            return ""
+
+        # Сортируем тексты по длине (самые полные — в начало)
+        ordered = sorted(texts, key=len, reverse=True)
+        merged_parts: list[str] = []
+        merged_seen: set[str] = set()
+
+        for text in ordered:
+            for paragraph in self._unique_paragraphs(text):
+                key = paragraph.lower()
+                # Если такой абзац уже был в другом тексте — пропускаем
+                if key not in merged_seen:
+                    merged_seen.add(key)
+                    merged_parts.append(paragraph)
+
+        # Формируем итоговый текст
+        body = "\n\n".join(merged_parts)
+        
+        # Добавляем список источников (для черновика ИИ)
+        source_line = "Источники: " + ", ".join(sorted(set(sources)))
+        
+        # Обрезаем, если текст слишком длинный
+        result = f"{body}\n\n{source_line}"
+        return result[: self.max_chars]
+
+
+class TagGenerator:
+    """Генератор хэштегов (Используется как запасной, если ИИ недоступен)."""
+    
+    # Слова, которые не могут быть тегами
+    stop_words = {
+        "the", "and", "for", "that", "with", "this", "from", "have", "will", "into", "about",
+        "это", "как", "для", "что", "или", "при", "после", "перед", "который", "также",
+        "было", "есть", "будет", "свои", "своих", "только", "очень", "через", "между"
+    }
+    # Ищем слова от 4 символов (буквы и цифры)
+    token_pattern = re.compile(r"[a-zA-Zа-яА-Я0-9]{4,}")
+
+    def generate(self, text: str, min_tags: int = 3, max_tags: int = 6) -> list[str]:
+        tokens = [t.lower() for t in self.token_pattern.findall(text)]
+        # Фильтруем мусор и исключаем числа (чтобы не было тегов вроде #2024)
+        filtered = [token for token in tokens if token not in self.stop_words and not token.isdigit()]
+        
+        if not filtered:
+            return ["#news"]
+            
+        # Считаем частоту слов
+        counts = Counter(filtered)
+        # Берем самые популярные
+        tags = [f"#{token}" for token, _ in counts.most_common(max_tags)]
+        
+        return tags[: max(min_tags, min(max_tags, len(tags)))]
+
+
+class FaissSearchPort(Protocol):
+    """Интерфейс для работы с FAISS (чтобы не импортировать весь класс)."""
+    ntotal: int
+    def search(self, vectors: np.ndarray, k: int = 5) -> tuple[np.ndarray, np.ndarray]:
+        ...
+
+
+class DuplicateEngine:
+    """Двигатель поиска дубликатов и блокировки подтвержденного спама."""
+    
+    def __init__(self, threshold: float, faiss_store: FaissSearchPort) -> None:
+        self.threshold = threshold
+        self.faiss = faiss_store
+
+    def get_text_hash(self, text: str) -> str:
+        """Создает быстрый blake2b-хэш текста для Уровня 1 (100% совпадение)."""
+        return hashlib.blake2b(text.strip().encode('utf-8')).hexdigest()
+
+    async def check_status(self, candidate_vector: np.ndarray, db: AsyncSession) -> tuple[bool, bool, float]:
+        """
+        Уровень 2: Проверяет вектор сообщения в FAISS.
+        Возвращает: (is_duplicate, is_confirmed_spam, score)
+        """
+        if self.faiss.ntotal <= 0:
+            return False, False, 0.0
+            
+        try:
+            query = np.ascontiguousarray(candidate_vector.reshape(1, -1), dtype=np.float32)
+            scores, ids = self.faiss.search(query, k=1) # Берем самый похожий
+            
+            best_score = float(scores[0][0]) if scores.size else 0.0
+            best_id = int(ids[0][0]) if ids.size else -1
+            
+            if best_score < self.threshold:
+                return False, False, best_score
+
+            # Если сходство высокое, проверяем в базе — не спам ли это случайно?
+            res = await db.execute(
+                text("SELECT is_confirmed_spam FROM messages WHERE embedding_id = :eid"),
+                {"eid": best_id}
+            )
+            row = res.fetchone()
+            is_spam = row.is_confirmed_spam if row else False
+            
+            return True, is_spam, best_score
+            
+        except Exception as e:
+            logger.error(f"FAISS check failed: {e}")
+            return False, False, 0.0
+
+==================================================
+
+FILE: app\backend\services\processing_service.py
+--------------------------------------------------
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+import re
+import httpx
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+
+import numpy as np
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+from telethon.errors import FloodWaitError
+
+from app.collector.telegram_client import CollectedMessage, TelegramCollector
+from app.config import get_settings
+from app.backend.services.faiss_store import FaissStore
+from app.backend.services.embedding_service import EmbeddingService
+from app.backend.services.data_service import DataService
+from app.backend.services.ai_service import AIService
+from app.backend.services.nlp import DuplicateEngine, MergeEngine, Preprocessor, SpamFilter, TagGenerator
+
+logger = logging.getLogger(__name__)
+
+
+class ProcessingService:
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+        self.settings = get_settings()
+        self.preprocessor = Preprocessor()
+        self.spam_filter = SpamFilter(
+            active_keywords=set(),
+            min_words=self.settings.spam_min_words,
+            max_links=self.settings.spam_max_links,
+            repeat_threshold=self.settings.spam_repeat_threshold,
+        )
+        self.embedding_service = EmbeddingService.get_instance(
+            self.settings.embedding_model_name, 
+            self.settings.embedding_batch_size
+        )
+        
+        self.faiss = FaissStore.get_instance(self.settings.faiss_index_path)
+        self.dedupe = DuplicateEngine(self.settings.dedupe_similarity_threshold, self.faiss)
+        self.merger = MergeEngine(self.settings.merge_max_chars)
+        self.tagger = TagGenerator()
+        self.ai_service = AIService()
+        
+        self.cancelled = False
+        self._initialized = False
+        self.compiled_spam_patterns = []
+
+    async def ensure_initialized(self) -> None:
+        if self._initialized:
+            return
+        await self.sync_faiss_index()
+        self._initialized = True
+
+    async def sync_faiss_index(self) -> None:
+        db_count_row = await self.db.execute(text("SELECT COUNT(*) FROM embeddings"))
+        db_count = int(db_count_row.scalar() or 0)
+        faiss_count = self.faiss.ntotal
+        if db_count == faiss_count:
+            return
+        logger.warning("FAISS desync detected: db=%s faiss=%s. Rebuilding index.", db_count, faiss_count)
+        await self.faiss.rebuild_from_db(self.db)
+
+    async def _load_source_map(self) -> dict[str, dict]:
+        rows = await self.db.execute(
+            text("SELECT id, channel, topic_id FROM sources WHERE is_active=TRUE ORDER BY priority, id")
+        )
+        return {str(r.channel): {"id": int(r.id), "topic_id": r.topic_id} for r in rows.fetchall()}
+
+    async def _get_source_checkpoints(self) -> dict[int, datetime]:
+        rows = await self.db.execute(
+            text("SELECT source_id, MAX(created_at) as last_msg FROM messages GROUP BY source_id")
+        )
+        checkpoints = {}
+        for r in rows.fetchall():
+            if r.last_msg:
+                dt = r.last_msg
+                checkpoints[r.source_id] = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+        return checkpoints
+
+    async def _encode_chunked(self, texts: list[str]) -> np.ndarray:
+        if not texts:
+            return np.empty((0, getattr(self.embedding_service, 'dimension', 384)), dtype=np.float32)
+            
+        tasks = []
+        chunk_size = max(1, self.settings.embedding_batch_size)
+        
+        for i in range(0, len(texts), chunk_size):
+            chunk = texts[i : i + chunk_size]
+            tasks.append(asyncio.to_thread(self.embedding_service.encode, chunk))
+            
+        vectors = await asyncio.gather(*tasks)
+        return np.vstack(vectors)
+
+    # Старый метод сохранен на всякий случай, чтобы ничего не сломать
+    async def _save_processed(self, source_id: int, msg: CollectedMessage, language: str, vector: np.ndarray, is_dup: bool, score: float, tags: list[str], is_spam: bool = False, text_hash: str = "") -> tuple[int, bool]:
+        try:
+            emb_row = await self.db.execute(
+                text("INSERT INTO embeddings(vector) VALUES (:v) RETURNING id"), 
+                {"v": vector.tobytes()}
+            )
+            emb_id = int(emb_row.fetchone().id)
+            
+            message_row = await self.db.execute(
+                text(
+                    """
+                    INSERT INTO messages(source_id, text, fmt_text, created_at, processed_at, embedding_id, language, is_duplicate, is_published, similarity_score, media_group_id, media_type, original_message_id, is_confirmed_spam, text_hash)
+                    VALUES (:sid, :text, :fmt, :created, :processed, :eid, :lang, :dup, FALSE, :score, :mg, :mt, :orig_id, :is_spam, :thash)
+                    RETURNING id
+                    """
+                ),
+                {
+                    "sid": source_id, "text": msg.text, "fmt": msg.fmt_text,
+                    "created": msg.created_at, "processed": datetime.now(timezone.utc),
+                    "eid": emb_id, "lang": language, "dup": is_dup, "score": score,
+                    "mg": msg.media_group_id, "mt": msg.media_type, "orig_id": msg.message_id,
+                    "is_spam": is_spam, "thash": text_hash
+                },
+            )
+            message_id = int(message_row.fetchone().id)
+            await self.db.flush()
+        except Exception:
+            await self.db.rollback()
+            raise
+
+        self.faiss.add_with_ids(vector.reshape(1, -1), np.asarray([emb_id], dtype=np.int64))
+        
+        for tag in tags:
+            await self.db.execute(text("INSERT INTO tags(name) VALUES (:n) ON CONFLICT(name) DO NOTHING"), {"n": tag})
+            await self.db.execute(text("UPDATE tags SET usage_count=usage_count+1 WHERE name=:n"), {"n": tag})
+            await self.db.execute(
+                text("INSERT INTO message_tags(message_id, tag_id) SELECT :mid, id FROM tags WHERE name=:n ON CONFLICT DO NOTHING"), 
+                {"mid": message_id, "n": tag}
+            )
+        
+        await self.db.flush()
+        return message_id, is_dup
+
+    async def _publish_beautiful_post(self, collector: TelegramCollector, channel_name: str, messages: list[dict], topic_id: int | None = None, is_spam: bool = False, is_update: bool = False, update_text: str = None, reply_to_msg_id: int = None, ai_data: dict = None, bypass_ai: bool = False) -> int | bool:
+        if not messages:
+            return False
+
+        settings = get_settings()
+        target = settings.telegram_publish_channel
+        
+        forced_topic_id = None
+        if isinstance(target, str):
+            target = target.strip()
+            if "/" in target:
+                parts = target.split("/")
+                if len(parts) == 2 and parts[0].lstrip('-').isdigit() and parts[1].isdigit():
+                    target = int(parts[0])
+                    forced_topic_id = int(parts[1])
+            elif target.lstrip('-').isdigit():
+                target = int(target)
+
+        raw_text = "\n\n".join([m['text'] for m in messages if m['text']])
+        if not raw_text: raw_text = "Новость без текста"
+        
+        final_caption = ""
+        target_topic = topic_id 
+        if forced_topic_id:
+            target_topic = forced_topic_id
+
+        clean_channel = str(channel_name).replace('@', '')
+        orig_msg_id = messages[0].get('original_message_id', '')
+        
+        if clean_channel.startswith('-100'):
+            source_url = f"https://t.me/c/{clean_channel[4:]}/{orig_msg_id}"
+        elif clean_channel.startswith('+') or 'joinchat' in clean_channel:
+            source_url = f"https://t.me/{clean_channel}"
+        else:
+            source_url = f"https://t.me/{clean_channel}/{orig_msg_id}"
+
+        source_link = f'<a href="{source_url}">🔗 Источник</a>'
+
+        if is_spam:
+            if settings.telegram_spam_topic_id:
+                target_topic = settings.telegram_spam_topic_id
+                final_caption = f"⚠️ <b>КАРАНТИН (СПАМ-ФИЛЬТР)</b>\n\n{raw_text[:900]}\n\n{source_link}"
+            else:
+                return False 
+                
+        elif is_update and update_text:
+            final_caption = f"{update_text}\n\n{source_link}"
+            
+        else:
+            if ai_data and ai_data.get("rewrite"):
+                caption_base = ai_data["rewrite"]
+                tags = ai_data.get("tags", [])
+                tag_string = ""
+                if tags:
+                    clean_tags = [t if t.startswith('#') else f"#{t}" for t in tags]
+                    tag_string = "\n\n" + " ".join(clean_tags)
+                
+                final_caption = f"{caption_base}\n\n{source_link}{tag_string}"
+            else:
+                text_msg = next((m for m in messages if m['fmt_text']), None)
+                caption_base = text_msg['fmt_text'] if text_msg else raw_text
+                
+                tag_rows = await self.db.execute(
+                    text("""
+                        SELECT t.name FROM tags t 
+                        JOIN message_tags mt ON t.id = mt.tag_id 
+                        WHERE mt.message_id = :mid AND t.is_blocked = FALSE LIMIT 5
+                    """),
+                    {"mid": messages[0]['id']}
+                )
+                tags = [row.name for row in tag_rows.fetchall()]
+                tag_string = ""
+                if tags:
+                    tag_string = "\n\n#" + "".join(filter(str.isalnum, channel_name.replace('@', ''))) + " " + " ".join(tags)
+                
+                final_caption = f"{caption_base}\n\n{source_link}{tag_string}"
+
+        has_media = any(m.get('media_type') for m in messages)
+        is_long_caption = len(final_caption) > 1024 and has_media
+        media_caption = "" if is_long_caption else final_caption
+
+        reply_to = reply_to_msg_id if is_update else target_topic
+        
+        target_channel = messages[0]['source_channel']
+        if isinstance(target_channel, str):
+            if target_channel.lstrip('-').isdigit():
+                target_channel = int(target_channel)
+            elif target_channel.startswith('+'):
+                target_channel = f"https://t.me/{target_channel}"
+
+        sent_media_msg = None 
+
+        for attempt in range(1, 4):
+            try:
+                if has_media and not sent_media_msg:
+                    if len(messages) > 1:
+                        media_files = []
+                        msg_ids = [m['original_message_id'] for m in messages]
+                        orig_messages = await collector.client.get_messages(target_channel, ids=msg_ids)
+                        
+                        for orig in orig_messages:
+                            if orig and orig.media:
+                                media_files.append(orig.media)
+                                
+                        if media_files:
+                            sent_media_msg = await collector.client.send_file(
+                                target, media_files, caption=media_caption, parse_mode='html', reply_to=reply_to
+                            )
+                    
+                    elif messages[0]['media_type']:
+                        orig = await collector.client.get_messages(target_channel, ids=messages[0]['original_message_id'])
+                        if orig and orig.media:
+                            sent_media_msg = await collector.client.send_file(
+                                target, orig.media, caption=media_caption, parse_mode='html', reply_to=reply_to
+                            )
+                
+                if is_long_caption or not has_media:
+                    text_reply_to = sent_media_msg[0].id if isinstance(sent_media_msg, list) else (sent_media_msg.id if sent_media_msg else reply_to)
+                    
+                    if final_caption.strip():
+                        sent_text_msg = await collector.client.send_message(
+                            target, final_caption, parse_mode='html', link_preview=False, reply_to=text_reply_to
+                        )
+                        if not sent_media_msg:
+                            sent_media_msg = sent_text_msg
+
+                break 
+
+            except FloodWaitError as exc:
+                if exc.seconds > 300: 
+                    logger.error(f"FloodWait {exc.seconds}s. Skipping.")
+                    return False
+                await asyncio.sleep(exc.seconds)
+            except Exception:
+                logger.exception("Publish error on attempt %s", attempt)
+                await asyncio.sleep(2 ** attempt)
+        
+        if sent_media_msg:
+            pub_id = sent_media_msg[0].id if isinstance(sent_media_msg, list) else sent_media_msg.id
+            
+            # Если пост попал в карантин, бот пришлет к нему твои кнопки управления
+            if is_spam:
+                db_msg_id = messages[0]['id']
+                bot_token = self.settings.telegram_bot_token
+                if bot_token:
+                    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                    keyboard = {"inline_keyboard": [
+                        [{"text": "🔗 Источник (Оригинал)", "url": source_url}],
+                        [{"text": "✅ Опубликовать", "callback_data": f"pub:{db_msg_id}"},
+                         {"text": "🚫 В спам (Обучить)", "callback_data": f"spam:{db_msg_id}"}]
+                    ]}
+                    payload = {
+                        "chat_id": target,
+                        "reply_to_message_id": pub_id,
+                        "text": "⚙️ <b>Выберите действие:</b>",
+                        "parse_mode": "HTML",
+                        "reply_markup": keyboard
+                    }
+                    if target_topic: payload["message_thread_id"] = target_topic
+                    
+                    async def send_btns():
+                        async with httpx.AsyncClient() as client:
+                            await client.post(url, json=payload)
+                    asyncio.create_task(send_btns())
+                    
+            return pub_id
+            
+        return False
+
+    async def process_specific_messages(self, message_ids: list[int]) -> bool:
+        """
+        [NEW] ФАЗА 2: ВОРКЕР (ПОТРЕБИТЕЛЬ)
+        Обрабатывает конкретные сообщения: ИИ, дедупликация и публикация.
+        """
+        if not message_ids: 
+            return False
+            
+        # УЛУЧШЕНИЕ 1: Гарантируем, что FAISS инициализирован в отдельном процессе
+        await self.ensure_initialized()
+            
+        # 1. Загружаем сырые сообщения из базы
+        rows = await self.db.execute(
+            text("SELECT * FROM messages WHERE id = ANY(:ids) ORDER BY id"),
+            {"ids": message_ids}
+        )
+        db_msgs = rows.fetchall()
+        if not db_msgs: 
+            return False
+            
+        source_id = db_msgs[0].source_id
+        
+        src_row = await self.db.execute(
+            text("SELECT channel, topic_id FROM sources WHERE id = :sid"),
+            {"sid": source_id}
+        )
+        src = src_row.fetchone()
+        if not src: 
+            return False
+        channel_name = src.channel
+        topic_id = src.topic_id
+
+        full_text = "\n\n".join([m.text for m in db_msgs if m.text]).strip()
+        full_fmt_text = "\n\n".join([m.fmt_text or m.text for m in db_msgs]).strip()
+        
+        # УЛУЧШЕНИЕ 6: Защита от пустых текстов (например, одни фото в альбоме)
+        if not full_text:
+            logger.info(f"Messages {message_ids} contain no text. Skipping processing.")
+            return True
+
+        # 2. Настраиваем фильтры
+        data_svc = DataService(self.db)
+        active_stop_words = await data_svc.get_active_spam_keywords()
+        self.compiled_spam_patterns = [re.compile(rf"\b{re.escape(w)}\b", re.IGNORECASE) for w in active_stop_words]
+        self.spam_filter = SpamFilter(
+            active_keywords=active_stop_words,
+            min_words=self.settings.spam_min_words,
+            max_links=self.settings.spam_max_links,
+            repeat_threshold=self.settings.spam_repeat_threshold,
+        )
+        
+        processed = self.preprocessor.run(full_text)
+        processed_fmt = self.preprocessor.run(full_fmt_text)
+        
+        # 3. ПРОВЕРКА НА СПАМ
+        is_spam = False
+        if processed_fmt.cleaned:
+            text_lower = processed_fmt.cleaned.lower()
+            for pattern in self.compiled_spam_patterns:
+                if pattern.search(text_lower):
+                    is_spam = True
+                    break
+        if not is_spam and processed_fmt.cleaned:
+            has_media = any(m.media_type for m in db_msgs)
+            if not has_media and self.spam_filter.is_spam(processed_fmt.cleaned):
+                is_spam = True
+                
+        msgs_dict = []
+        for m in db_msgs:
+            msgs_dict.append({
+                'id': m.id, 'text': m.text, 'fmt_text': m.fmt_text, 
+                'media_type': m.media_type, 'original_message_id': m.original_message_id, 
+                'source_channel': channel_name
+            })
+
+        if is_spam:
+            await self.db.execute(text("UPDATE messages SET is_confirmed_spam=TRUE, processed_at=NOW() WHERE id = ANY(:ids)"), {"ids": message_ids})
+            await self.db.execute(text("UPDATE sources SET spam_count=spam_count+1 WHERE id=:sid"), {"sid": source_id})
+            await self.db.commit()
+            if self.settings.telegram_spam_topic_id:
+                async with TelegramCollector(self.settings.telegram_api_id, self.settings.telegram_api_hash, self.settings.telegram_session_name, self.settings.telegram_string_session) as collector:
+                    await self._publish_beautiful_post(collector, channel_name, msgs_dict, topic_id, is_spam=True)
+            return True
+
+        # 4. ДЕДУПЛИКАЦИЯ УРОВЕНЬ 1 (BLAKE2B HASH)
+        text_hash = self.dedupe.get_text_hash(processed.cleaned) if processed.cleaned else ""
+        is_exact_dup = False
+        if text_hash:
+            res = await self.db.execute(text("SELECT id FROM messages WHERE text_hash = :th AND id != ANY(:ids) LIMIT 1"), {"th": text_hash, "ids": message_ids})
+            is_exact_dup = res.fetchone() is not None
+
+        if is_exact_dup:
+            await self.db.execute(text("UPDATE messages SET is_duplicate=TRUE, text_hash=:th, processed_at=NOW() WHERE id = ANY(:ids)"), {"th": text_hash, "ids": message_ids})
+            await self.db.execute(text("UPDATE sources SET duplicate_count=duplicate_count+1 WHERE id=:sid"), {"sid": source_id})
+            await self.db.commit()
+            return True
+
+        # 5. ДЕДУПЛИКАЦИЯ УРОВЕНЬ 2 (FAISS)
+        # УЛУЧШЕНИЕ 2: Динамический размер embedding'а
+        dim = getattr(self.embedding_service, 'dimension', 384)
+        vector = np.zeros(dim, dtype=np.float32)
+        is_dup, score = False, 0.0
+        
+        if processed.cleaned:
+            vectors = await self._encode_chunked([processed.cleaned])
+            vector = vectors[0]
+            is_dup, _, score = await self.dedupe.check_status(vector, self.db)
+
+        emb_row = await self.db.execute(text("INSERT INTO embeddings(vector) VALUES (:v) RETURNING id"), {"v": vector.tobytes()})
+        emb_id = emb_row.scalar()
+        
+        tags = self.tagger.generate(processed.cleaned) if processed.cleaned else []
+
+        await self.db.execute(
+            text("""
+                UPDATE messages 
+                SET embedding_id=:eid, text_hash=:th, similarity_score=:score, is_duplicate=:dup, language=:lang, processed_at=NOW() 
+                WHERE id = ANY(:ids)
+            """),
+            {"eid": emb_id, "th": text_hash, "score": score, "dup": is_dup, "lang": processed.language, "ids": message_ids}
+        )
+        
+        for tag in tags:
+            await self.db.execute(text("INSERT INTO tags(name) VALUES (:n) ON CONFLICT(name) DO NOTHING"), {"n": tag})
+            await self.db.execute(text("UPDATE tags SET usage_count=usage_count+1 WHERE name=:n"), {"n": tag})
+            await self.db.execute(text("INSERT INTO message_tags(message_id, tag_id) SELECT :mid, id FROM tags WHERE name=:n ON CONFLICT DO NOTHING"), {"mid": message_ids[0], "n": tag})
+
+        self.faiss.add_with_ids(vector.reshape(1, -1), np.asarray([emb_id], dtype=np.int64))
+        await self.db.commit()
+
+        # 6. ИИ (REWRITE / UPDATES)
+        update_text = None
+        is_update = False
+        reply_to_msg_id = None
+        ai_data = None
+
+        settings_db = await data_svc.get_settings()
+        custom_prompt = settings_db.get('ai_prompt')
+
+        if is_dup:
+            await self.db.execute(text("UPDATE sources SET duplicate_count=duplicate_count+1 WHERE id=:sid"), {"sid": source_id})
+            await self.db.commit()
+            
+            query_vec = np.ascontiguousarray(vector.reshape(1, -1), dtype=np.float32)
+            _, ids = self.faiss.search(query_vec, k=1)
+            
+            # УЛУЧШЕНИЕ 3: Безопасное получение best_eid из FAISS
+            best_eid = int(ids[0][0]) if ids.size else -1
+            if best_eid <= 0:
+                best_eid = None
+                
+            if best_eid:
+                old_msg_res = await self.db.execute(text("SELECT text, published_message_id, created_at FROM messages WHERE embedding_id = :eid AND is_published = TRUE LIMIT 1"), {"eid": best_eid})
+                old_msg = old_msg_res.fetchone()
+                if old_msg and old_msg.published_message_id and (datetime.now(timezone.utc) - old_msg.created_at < timedelta(days=7)):
+                    async with httpx.AsyncClient(timeout=45.0) as http_client:
+                        self.ai_service = AIService(client=http_client, custom_prompt=custom_prompt)
+                        update_text = await self.ai_service.generate_update(old_msg.text, full_text)
+                        if update_text:
+                            is_update = True
+                            reply_to_msg_id = old_msg.published_message_id
+                        else:
+                            return True
+        else:
+            async with httpx.AsyncClient(timeout=45.0) as http_client:
+                self.ai_service = AIService(client=http_client, custom_prompt=custom_prompt)
+                has_media = any(m.media_type for m in db_msgs)
+                ai_data = await self.ai_service.edit_news(full_fmt_text, has_media)
+                
+                if ai_data:
+                    if ai_data.get("is_spam"):
+                        await self.db.execute(text("UPDATE messages SET is_confirmed_spam=TRUE WHERE id=ANY(:ids)"), {"ids": message_ids})
+                        await self.db.commit()
+                        if self.settings.telegram_spam_topic_id:
+                            async with TelegramCollector(self.settings.telegram_api_id, self.settings.telegram_api_hash, self.settings.telegram_session_name, self.settings.telegram_string_session) as collector:
+                                await self._publish_beautiful_post(collector, channel_name, msgs_dict, topic_id, is_spam=True)
+                        return True
+                    elif ai_data.get("importance", 1.0) < 0.3:
+                        return True
+
+        # 7. ФИНАЛЬНАЯ ПУБЛИКАЦИЯ
+        pub_id = False
+        async with TelegramCollector(self.settings.telegram_api_id, self.settings.telegram_api_hash, self.settings.telegram_session_name, self.settings.telegram_string_session) as collector:
+            pub_id = await self._publish_beautiful_post(
+                collector, channel_name, msgs_dict, topic_id=topic_id,
+                is_spam=False, is_update=is_update,
+                update_text=update_text, reply_to_msg_id=reply_to_msg_id,
+                ai_data=ai_data
+            )
+        
+        if pub_id:
+            await self.db.execute(text("UPDATE messages SET is_published=TRUE, published_message_id=:pub_id WHERE id = ANY(:ids)"), {"ids": message_ids, "pub_id": pub_id})
+            await self.db.execute(text("UPDATE sources SET published_messages=published_messages+1 WHERE id=:sid"), {"sid": source_id})
+            await self.db.commit()
+
+        try:
+            self.faiss.persist()
+        except Exception as e:
+            logger.warning(f"Failed to persist FAISS index: {e}")
+            
+        return True
+
+    async def _enqueue_batch(self, batch: list[tuple[int, CollectedMessage]], reverse_source_map: dict[int, str]) -> tuple[datetime | None, int]:
+        """
+        [NEW] ФАЗА 2: СБОРЩИК (ПРОИЗВОДИТЕЛЬ)
+        Сохраняет сырые сообщения в БД и кидает задачу в очередь Redis.
+        """
+        newest = None
+        albums = defaultdict(list)
+        for source_id, msg in batch:
+            if newest is None or msg.created_at > newest:
+                newest = msg.created_at
+            key = msg.media_group_id if msg.media_group_id else f"single_{msg.message_id}"
+            albums[key].append((source_id, msg))
+
+        processed_count = 0
+        from app.tasks import process_news_task
+
+        for key, items in albums.items():
+            source_id = items[0][0]
+            msgs = [m for s, m in items]
+            saved_ids = []
+            
+            for msg in msgs:
+                row = await self.db.execute(
+                    text("""
+                    INSERT INTO messages(source_id, text, fmt_text, created_at, media_group_id, media_type, original_message_id)
+                    VALUES (:sid, :text, :fmt, :created, :mg, :mt, :orig_id)
+                    RETURNING id
+                    """),
+                    {
+                        "sid": source_id,
+                        "text": msg.text,
+                        "fmt": msg.fmt_text,
+                        "created": msg.created_at,
+                        "mg": msg.media_group_id,
+                        "mt": msg.media_type,
+                        "orig_id": msg.message_id
+                    }
+                )
+                saved_ids.append(row.scalar())
+            
+            await self.db.commit()
+            
+            # УЛУЧШЕНИЕ 4: Fallback на случай падения Redis
+            if saved_ids:
+                try:
+                    await process_news_task.kiq(saved_ids)
+                    processed_count += len(saved_ids)
+                except Exception:
+                    logger.exception(f"Failed to enqueue job for messages {saved_ids}")
+
+        return newest, processed_count
+
+    async def run_batch(self, hours: int | None = None) -> dict[str, int | str]:
+        """Облегченный цикл Сборщика. Только качает и кидает в очередь."""
+        await self.ensure_initialized()
+        
+        # Просто обновляем статус для дашборда, БЕЗ блокировок
+        await self.db.execute(text("""
+            UPDATE processing_state 
+            SET last_run_status = 'running', updated_at = NOW()
+            WHERE id = 1
+        """))
+        await self.db.commit()
+
+        started = time.perf_counter()
+        status, processed_total, newest = "success", 0, None
+        
+        try:
+            source_map = await self._load_source_map()
+            reverse_source_map = {v['id']: k for k, v in source_map.items()}
+            checkpoints = await self._get_source_checkpoints()
+            default_since = datetime.now(timezone.utc) - timedelta(hours=hours or 24)
+
+            try:
+                async with TelegramCollector(
+                    self.settings.telegram_api_id, 
+                    self.settings.telegram_api_hash, 
+                    self.settings.telegram_session_name,
+                    self.settings.telegram_string_session
+                ) as collector:
+                    
+                    for channel_name, source_data in source_map.items():
+                        if self.cancelled: status = "cancelled"; break
+                        await asyncio.sleep(0.5)
+                        sid = source_data['id']
+                        
+                        start_time = datetime.now(timezone.utc) - timedelta(hours=hours) if hours is not None else checkpoints.get(sid, default_since)
+                            
+                        current_batch = []
+                        channel_processed = 0
+                        
+                        async for msg in collector.iter_messages([channel_name], hours or 24, since_timestamp=start_time):
+                            if self.cancelled: break
+                            current_batch.append((sid, msg))
+                            
+                            if len(current_batch) >= self.settings.batch_size:
+                                n, cnt = await self._enqueue_batch(current_batch, reverse_source_map)
+                                processed_total += cnt
+                                channel_processed += cnt
+                                if n and (newest is None or n > newest): newest = n
+                                current_batch = []
+
+                        if current_batch and not self.cancelled:
+                            n, cnt = await self._enqueue_batch(current_batch, reverse_source_map)
+                            processed_total += cnt
+                            channel_processed += cnt
+                            if n and (newest is None or n > newest): newest = n
+
+                        # Обновляем статистику скачиваний для источника
+                        if channel_processed > 0:
+                            await self.db.execute(
+                                text("UPDATE sources SET total_messages = total_messages + :cnt, last_scan_at = NOW() WHERE id = :id"),
+                                {"cnt": channel_processed, "id": sid}
+                            )
+                            await self.db.commit()
+
+            except Exception:
+                status = "failed"
+                logger.exception("Processing failed")
+                try:
+                    await self.db.rollback()
+                except Exception as rollback_err:
+                    logger.error(f"Rollback failed: {rollback_err}")
+            
+        except Exception as e:
+            status = "failed"
+            logger.exception("Critical error outside main loop")
+        finally:
+            duration = time.perf_counter() - started
+            checkpoint = newest.astimezone(timezone.utc) if (newest and status == "success") else None
+            
+            try:
+                await self.db.execute(
+                    text("""
+                    UPDATE processing_state 
+                    SET last_run_status=:s, last_run_duration=:d, last_run_count=:c, 
+                        last_processed_timestamp=COALESCE(:ts, last_processed_timestamp), updated_at=NOW() 
+                    WHERE id=1
+                    """),
+                    {"s": status, "d": duration, "c": processed_total, "ts": checkpoint}
+                )
+                await self.db.commit()
+            except Exception as e:
+                logger.error(f"CRITICAL: Failed to release processing lock: {e}")
+        
+        return {"status": status, "processed": processed_total, "duration_sec": round(duration, 3)}
+    
+    async def _send_admin_buttons(self, chat_id: str | int, reply_to_id: int, db_msg_id: int, source_url: str) -> None:
+        """Отправляет кнопки управления в Карантин через официального бота."""
+        bot_token = self.settings.telegram_bot_token
+        if not bot_token: 
+            return
+            
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        keyboard = {
+            "inline_keyboard": [
+                [{"text": "🔗 Посмотреть оригинал", "url": source_url}],
+                [
+                    {"text": "✅ Опубликовать", "callback_data": f"pub:{db_msg_id}"},
+                    {"text": "🚫 В спам (Обучить)", "callback_data": f"spam:{db_msg_id}"}
+                ]
+            ]
+        }
+        payload = {
+            "chat_id": chat_id,
+            "reply_to_message_id": reply_to_id,
+            "text": "⚙️ <b>Действие с постом:</b>",
+            "parse_mode": "HTML",
+            "reply_markup": keyboard
+        }
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                await client.post(url, json=payload)
+            except Exception as e:
+                logger.error(f"Failed to send bot buttons: {e}")
+
+    def cancel(self) -> None:
+        self.cancelled = True
+
+==================================================
+
+FILE: app\backend\services\search_service.py
+--------------------------------------------------
+from __future__ import annotations
+
+import numpy as np
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.backend.services.faiss_store import FaissStore
+from app.backend.services.embedding_service import EmbeddingService
+
+
+class SearchService:
+    def __init__(self, db: AsyncSession, model_name: str, faiss_path) -> None:
+        self.db = db
+        self.embedder = EmbeddingService.get_instance(model_name, batch_size=64)
+        self.faiss = FaissStore(faiss_path)
+
+    async def semantic_search(self, query: str, limit: int, source_id: int | None, tag: str | None) -> list[dict]:
+        vector = self.embedder.encode([query])[0]
+        scores, ids = self.faiss.search(np.ascontiguousarray(vector.reshape(1, -1), dtype=np.float32), k=max(limit, 5))
+        emb_ids = [int(i) for i in ids[0] if int(i) > 0]
+        if not emb_ids:
+            return []
+
+        rows = await self.db.execute(
+            text(
+                """
+                SELECT m.*, e.id as embedding_id
+                FROM messages m
+                JOIN embeddings e ON e.id=m.embedding_id
+                LEFT JOIN message_tags mt ON mt.message_id=m.id
+                LEFT JOIN tags t ON t.id=mt.tag_id
+                WHERE m.embedding_id = ANY(:ids)
+                  AND (:source_id IS NULL OR m.source_id=:source_id)
+                  AND (:tag IS NULL OR t.name=:tag)
+                LIMIT :limit
+                """
+            ),
+            {"ids": emb_ids, "source_id": source_id, "tag": tag, "limit": limit},
+        )
+        score_map = {int(eid): float(score) for eid, score in zip(ids[0], scores[0], strict=False) if int(eid) > 0}
+        result = []
+        for row in rows.fetchall():
+            item = dict(row._mapping)
+            item["similarity"] = score_map.get(int(item["embedding_id"]), 0.0)
+            result.append(item)
+
+        result.sort(key=lambda x: x["similarity"], reverse=True)
+        return result[:limit]
+
+
+==================================================
+
+FILE: app\backend\services\__init__.py
+--------------------------------------------------
+
+
+==================================================
+
+FILE: app\bot\bot_runner.py
+--------------------------------------------------
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import hmac
+import json
+import logging
+import time
+
+import httpx
+from telegram import Update, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
+from telegram.constants import ParseMode
+
+from app.config import get_settings
+
+# Настройка логгера
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+# Умное определение хоста: 'api' для Docker (prod), '127.0.0.1' для локальных тестов
+API_HOST = "api" if settings.environment == "prod" else "127.0.0.1"
+API_BASE = f"http://{API_HOST}:{settings.api_port}"
+
+# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (БЕЗОПАСНОСТЬ И API) ---
+
+def _admin(update: Update) -> bool:
+    """Проверяет, является ли пользователь администратором (ID из .env)."""
+    user = update.effective_user
+    return bool(user and user.id in settings.admin_ids)
+
+
+def _telegram_auth_header(user_id: int) -> str:
+    """Генерирует зашифрованный заголовок для авторизации в нашем API."""
+    user_obj = {"id": user_id, "username": "bot_admin"}
+    payload = {
+        "auth_date": int(time.time()),
+        "query_id": f"bot-{user_id}",
+        "user": json.dumps(user_obj, separators=(",", ":")),
+    }
+    data_check = "\n".join([f"{k}={v}" for k, v in sorted(payload.items())])
+    secret = hashlib.sha256(settings.telegram_bot_token.encode()).digest()
+    payload["hash"] = hmac.new(secret, data_check.encode(), hashlib.sha256).hexdigest()
+    return json.dumps(payload)
+
+
+async def _api(method: str, path: str, payload: dict | None = None, user_id: int | None = None) -> dict | list:
+    """Универсальный метод для выполнения запросов к внутреннему API сервера."""
+    admin_id = user_id or (next(iter(settings.admin_ids)) if settings.admin_ids else 0)
+    headers = {"X-Telegram-Auth": _telegram_auth_header(admin_id)}
+    async with httpx.AsyncClient(timeout=60) as client:
+        response = await client.request(method, f"{API_BASE}{path}", json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()
+
+
+async def _send_long_message(update: Update, text: str, **kwargs) -> None:
+    """Отправка длинных сообщений с разбивкой по лимитам Telegram (4096 символов)."""
+    max_len = 4000  # Чуть меньше лимита для надежности
+    
+    if len(text) <= max_len:
+        await update.message.reply_text(text, **kwargs)
+        return
+
+    # Разбиваем текст, стараясь не резать слова (по переносу строки)
+    parts = []
+    while len(text) > 0:
+        if len(text) > max_len:
+            split_index = text.rfind('\n', 0, max_len)
+            if split_index == -1:
+                split_index = max_len
+            parts.append(text[:split_index])
+            text = text[split_index:].lstrip()
+        else:
+            parts.append(text)
+            break
+
+    for part in parts:
+        await update.message.reply_text(part, **kwargs)
+        await asyncio.sleep(0.3)  # Защита от спам-лимитов самого Telegram
+
+
+# --- ИНИЦИАЛИЗАЦИЯ И МЕНЮ ---
+
+async def post_init(application: Application) -> None:
+    """Автоматически настраивает список команд в кнопке 'Меню' при запуске."""
+    commands = [
+        BotCommand("start", "🚀 Главная и статус"),
+        BotCommand("help", "📖 Инструкция"),
+        BotCommand("add_channel", "➕ Добавить канал (@name [ветка])"),
+        BotCommand("list_channels", "📋 Список источников"),
+        BotCommand("remove_channel", "❌ Удалить источник (по ID)"),
+        BotCommand("add_keyword", "🚫 Добавить стоп-слово"),
+        BotCommand("list_keywords", "🔍 Список фильтров"),
+        BotCommand("run", "⚡ Запустить сбор новостей"),
+        BotCommand("status", "⚙️ Статус воркера"),
+        BotCommand("stats", "📊 Статистика за день"),
+        BotCommand("search", "🔍 Поиск по базе"),
+    ]
+    await application.bot.set_my_commands(commands)
+    logger.info("Bot commands menu has been updated.")
+
+
+# --- ОБРАБОТЧИКИ ТЕКСТОВЫХ КОМАНД ---
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Команда /start: приветствие и кнопка Mini App."""
+    if not _admin(update):
+        await update.message.reply_text(f"⛔ Доступ запрещен. Твой ID: {update.effective_user.id}")
+        return
+
+    # Добавляем красивую кнопку для открытия админки внутри Telegram
+    keyboard = InlineKeyboardMarkup.from_button(
+        InlineKeyboardButton(
+            text="🎛 Открыть панель управления", 
+            web_app=WebAppInfo(url=settings.miniapp_base_url)
+        )
+    )
+
+    await update.message.reply_text(
+        f"<b>🤖 AI AGGREGATOR 2.0 АКТИВЕН</b>\n\n"
+        f"👤 <b>Ваш ID:</b> <code>{update.effective_user.id}</code>\n\n"
+        f"Используйте меню или кнопку ниже для управления системой.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=keyboard
+    )
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Команда /help: подробный гайд по всем функциям."""
+    if not _admin(update): return
+    
+    help_text = (
+        "📖 <b>Инструкция по управлению:</b>\n\n"
+        "<b>1. Каналы-источники:</b>\n"
+        "<code>/add_channel @username</code> — в общую ленту\n"
+        "<code>/add_channel @username 15</code> — в ветку с ID 15\n"
+        "<code>/list_channels</code> — список всех доноров\n"
+        "<code>/remove_channel ID</code> — удалить источник\n\n"
+        "<b>2. Гибкий фильтр (Имба):</b>\n"
+        "<code>/add_keyword слово</code> — добавить в фильтр спама\n"
+        "<code>/list_keywords</code> — список всех стоп-слов\n"
+        "<code>/toggle_keyword ID</code> — вкл/выкл слово\n"
+        "<code>/remove_keyword ID</code> — удалить слово навсегда\n\n"
+        "<b>3. Работа с данными:</b>\n"
+        "<code>/run</code> — собрать новости за 24 часа\n"
+        "<code>/status</code> — состояние воркера\n"
+        "<code>/stats</code> — итоги за сегодня\n"
+        "<code>/search текст</code> — поиск по базе"
+    )
+    await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
+
+
+async def add_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Добавление нового канала с поддержкой веток."""
+    if not update.message: return 
+    if not _admin(update): return
+    
+    if not context.args:
+        await update.message.reply_text("⚠️ Формат: <code>/add_channel @username [ID_ветки]</code>", parse_mode=ParseMode.HTML)
+        return
+        
+    channel = context.args[0]
+    topic_id = int(context.args[1]) if len(context.args) > 1 and context.args[1].isdigit() else None
+    
+    try:
+        data = await _api("POST", "/api/sources", {"channel": channel, "topic_id": topic_id}, update.effective_user.id)
+        res_msg = f"✅ <b>Канал добавлен!</b>\n🔗 <code>{data['channel']}</code>"
+        if data.get('topic_id'):
+            res_msg += f"\n📁 Ветка: <code>{data['topic_id']}</code>"
+        await update.message.reply_text(res_msg, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка API: {e}")
+
+
+async def list_channels(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Список всех источников (с поддержкой длинных списков)."""
+    if not _admin(update): return
+    try:
+        rows = await _api("GET", "/api/sources", user_id=update.effective_user.id)
+        if not rows:
+            await update.message.reply_text("📭 Список источников пуст.")
+            return
+        msg = "📋 <b>Ваши источники:</b>\n\n"
+        for r in rows:
+            status = "🟢" if r['is_active'] else "🔴"
+            topic = f" [Ветка: {r['topic_id']}]" if r.get('topic_id') else ""
+            msg += f"{status} <b>ID {r['id']}</b>: {r['channel']}{topic}\n"
+        
+        await _send_long_message(update, msg, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+
+async def remove_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Удаление источника по ID."""
+    if not _admin(update) or not context.args:
+        await update.message.reply_text("⚠️ Укажите ID. Пример: <code>/remove_channel 5</code>", parse_mode=ParseMode.HTML)
+        return
+    try:
+        await _api("DELETE", f"/api/sources/{int(context.args[0])}", user_id=update.effective_user.id)
+        await update.message.reply_text("🗑 Источник удален.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+
+# --- ЛОГИКА ГИБКОГО ФИЛЬТРА (ИМБА) ---
+
+async def add_keyword(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Добавление стоп-слова в базу."""
+    if not _admin(update) or not context.args:
+        await update.message.reply_text("⚠️ Введите слово: <code>/add_keyword казино</code>", parse_mode=ParseMode.HTML)
+        return
+    word = context.args[0].lower()
+    try:
+        data = await _api("POST", "/api/spam_keywords", {"word": word}, update.effective_user.id)
+        await update.message.reply_text(f"🚫 Слово <b>'{data['word']}'</b> добавлено в фильтр.", parse_mode=ParseMode.HTML)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+
+async def list_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Список всех стоп-слов (с поддержкой длинных списков)."""
+    if not _admin(update): return
+    try:
+        rows = await _api("GET", "/api/spam_keywords", user_id=update.effective_user.id)
+        if not rows:
+            await update.message.reply_text("📭 Список фильтров пуст.")
+            return
+        msg = "🚫 <b>Активные фильтры:</b>\n\n"
+        for r in rows:
+            status = "✅" if r['is_active'] else "⚪"
+            msg += f"{status} ID: <code>{r['id']}</code> | <b>{r['word']}</b>\n"
+        msg += "\n<i>Используйте /toggle_keyword ID для переключения</i>"
+        
+        await _send_long_message(update, msg, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+
+async def toggle_keyword(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Включение/выключение стоп-слова."""
+    if not _admin(update) or not context.args: return
+    try:
+        kw_id = int(context.args[0])
+        await _api("PATCH", f"/api/spam_keywords/{kw_id}/toggle", user_id=update.effective_user.id)
+        await update.message.reply_text(f"🔄 Статус фильтра {kw_id} изменен.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+
+async def remove_keyword(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Удаление стоп-слова навсегда."""
+    if not _admin(update) or not context.args: return
+    try:
+        kw_id = int(context.args[0])
+        await _api("DELETE", f"/api/spam_keywords/{kw_id}", user_id=update.effective_user.id)
+        await update.message.reply_text(f"🗑 Слово удалено из фильтра.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+
+# --- СИСТЕМНЫЕ КОМАНДЫ ---
+
+async def run_batch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Запуск воркера."""
+    if not _admin(update): return
+    hours = int(context.args[0]) if context.args and context.args[0].isdigit() else 24
+    await update.message.reply_text(f"⏳ Запускаю сканирование за {hours} ч...")
+    try:
+        result = await _api("POST", "/api/processing/run", {"hours": hours}, update.effective_user.id)
+        await update.message.reply_text(f"🚀 Воркер запущен! Статус: <b>{result.get('status')}</b>", parse_mode=ParseMode.HTML)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка запуска: {e}")
+
+
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Статус воркера."""
+    if not _admin(update): return
+    try:
+        data = await _api("GET", "/api/processing/status", user_id=update.effective_user.id)
+        state = data.get('state', {})
+        is_running = "🟢 Активен" if data.get('running') else "💤 Спит"
+        text = (
+            f"⚙️ <b>Статус системы:</b>\n\n"
+            f"Воркер: {is_running}\n"
+            f"Последний запуск: <code>{state.get('last_run_duration', 0):.1f} сек.</code>\n"
+            f"Обработано постов: <code>{state.get('last_run_count', 0)}</code>\n"
+            f"Результат: <code>{state.get('last_run_status', 'N/A')}</code>"
+        )
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Аналитика за сегодня."""
+    if not _admin(update): return
+    try:
+        data = await _api("GET", "/api/analytics/daily", user_id=update.effective_user.id)
+        daily = data.get('daily', [])
+        if not daily:
+            await update.message.reply_text("📊 Данных за сегодня еще нет.")
+            return
+        today = daily[0]
+        text = (
+            f"📊 <b>Итоги за сегодня:</b>\n\n"
+            f"📥 Всего найдено: <code>{today.get('total', 0)}</code>\n"
+            f"🗑 Удалено дублей: <code>{today.get('duplicates', 0)}</code>\n"
+            f"✅ Опубликовано: <code>{today.get('published', 0)}</code>"
+        )
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
+
+async def search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Семантический поиск."""
+    if not _admin(update) or not context.args:
+        await update.message.reply_text("⚠️ Введите запрос: <code>/search биткоин</code>", parse_mode=ParseMode.HTML)
+        return
+    query = " ".join(context.args)
+    try:
+        rows = await _api("POST", "/api/search", {"query": query, "limit": 3}, update.effective_user.id)
+        if not rows:
+            await update.message.reply_text("📭 Ничего не найдено.")
+            return
+        msg = f"🔍 <b>Результаты поиска по «{query}»:</b>\n\n"
+        for r in rows:
+            msg += f"🔹 <b>ID {r['id']}</b> (Сходство: {r['similarity']:.2f})\n{r['text'][:200]}...\n\n"
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка поиска: {e}")
+
+
+# --- ОБРАБОТКА КНОПОК (КАРАНТИН) ---
+
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработка кнопок под сообщениями в ветке СПАМ (текст и медиа)."""
+    query = update.callback_query
+    if not _admin(update):
+        await query.answer("Нет доступа", show_alert=True)
+        return
+
+    try:
+        action, msg_id = query.data.split(":")
+        await query.answer("Выполняю...")
+
+        # Проверяем, есть ли медиафайл у сообщения
+        is_media = bool(query.message.photo or query.message.video or query.message.document)
+        current_text = query.message.caption if is_media else query.message.text
+        
+        # Защита от пустых текстов
+        if not current_text:
+            current_text = ""
+
+        if action == "pub":
+            await _api("POST", f"/api/messages/{msg_id}/republish", user_id=update.effective_user.id)
+            new_text = current_text + "\n\n✅ <b>ОПУБЛИКОВАНО</b>"
+        elif action == "spam":
+            await _api("DELETE", f"/api/messages/{msg_id}", user_id=update.effective_user.id)
+            new_text = current_text + "\n\n🗑 <b>ПОДТВЕРЖДЕНО КАК СПАМ</b>"
+        else:
+            return
+
+        # Обновляем текст в зависимости от типа сообщения
+        if is_media:
+            await query.edit_message_caption(caption=new_text, parse_mode=ParseMode.HTML, reply_markup=None)
+        else:
+            await query.edit_message_text(text=new_text, parse_mode=ParseMode.HTML, reply_markup=None)
+            
+    except Exception as e:
+        logger.error(f"Callback error: {e}")
+        await query.answer(f"Ошибка: {e}", show_alert=True)
+
+
+def main() -> None:
+    """Запуск бота."""
+    app = Application.builder().token(settings.telegram_bot_token).post_init(post_init).build()
+    
+    # Регистрация всех обработчиков
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("add_channel", add_channel))
+    app.add_handler(CommandHandler("list_channels", list_channels))
+    app.add_handler(CommandHandler("remove_channel", remove_channel))
+    app.add_handler(CommandHandler("add_keyword", add_keyword))
+    app.add_handler(CommandHandler("list_keywords", list_keywords))
+    app.add_handler(CommandHandler("toggle_keyword", toggle_keyword))
+    app.add_handler(CommandHandler("remove_keyword", remove_keyword))
+    app.add_handler(CommandHandler("run", run_batch))
+    app.add_handler(CommandHandler("status", status))
+    app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(CommandHandler("search", search))
+    
+    app.add_handler(CallbackQueryHandler(handle_callback))
+    
+    logger.info("Telegram Admin Bot 2.0 is starting...")
+    app.run_polling(close_loop=False)
+
+
+if __name__ == "__main__":
+    main()
+
+==================================================
+
+FILE: app\bot\__init__.py
+--------------------------------------------------
+
+
+==================================================
+
+FILE: app\collector\telegram_client.py
+--------------------------------------------------
+"""Telegram collection and publication adapters."""
+from __future__ import annotations
+
+import asyncio
+import logging
+import re
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import AsyncIterator
+from telethon.sessions import StringSession
+
+from telethon import TelegramClient
+from telethon.errors import (
+    FloodWaitError, 
+    UserAlreadyParticipantError, 
+    InviteHashExpiredError,
+    ChannelPrivateError
+)
+from telethon.tl.functions.messages import ImportChatInviteRequest
+from telethon.tl.functions.channels import JoinChannelRequest
+from telethon.extensions import html 
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class CollectedMessage:
+    """Структура данных для собранного сообщения."""
+    source: str              # Юзернейм или ID канала
+    text: str                # Чистый текст
+    fmt_text: str            # Текст с HTML-разметкой
+    created_at: datetime     # Дата поста
+    media_group_id: str | None # ID альбома
+    message_id: int          # ID сообщения
+    media_type: str | None   # Тип вложения
+
+
+class TelegramCollector:
+    """Класс для сбора сообщений из каналов и публикации результатов."""
+
+    def __init__(self, api_id: int, api_hash: str, session_name: str, string_session: str = "") -> None:
+        self.api_id = api_id
+        self.api_hash = api_hash
+        session = StringSession(string_session) if string_session else session_name
+        self.client = TelegramClient(session, api_id, api_hash)
+
+    async def __aenter__(self) -> "TelegramCollector":
+        """Запуск клиента."""
+        await self.client.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        """Отключение клиента."""
+        await self.client.disconnect()
+
+    async def iter_messages(
+        self,
+        channels: list[str],
+        hours: int,
+        since_timestamp: datetime | None = None,
+    ) -> AsyncIterator[CollectedMessage]:
+        """
+        Асинхронный генератор сообщений.
+        Умеет вступать в каналы и искать их через глобальный поиск.
+        """
+        since = since_timestamp if since_timestamp is not None else datetime.now(timezone.utc) - timedelta(hours=hours)
+        if since.tzinfo is None:
+            since = since.replace(tzinfo=timezone.utc)
+
+        dialogs_fetched = False 
+
+        for channel in channels:
+            if isinstance(channel, str) and channel.lstrip('-').isdigit():
+                channel = int(channel)
+                
+            retries = 0
+            last_id = 0 
+            
+            while retries < 3:
+                try:
+                    entity = None
+                    
+                    # ✅ ИЗМЕНЕНИЕ 1: Добавляем твою умную проверку перед вступлением
+                    # -----------------------------------------------------------------
+                    try:
+                        # Ищем канал через глобальный поиск Telegram, чтобы узнать его статус
+                        target = channel
+                        if isinstance(channel, str) and channel.startswith('+'):
+                            target = f"https://t.me/{channel}"
+                            
+                        entity = await self.client.get_entity(target)
+                        
+                        # Если нашли, но мы НЕ состоим в канале (свойство left = True),
+                        # то сбрасываем entity, чтобы следующий блок кода его подписал.
+                        if hasattr(entity, 'left') and entity.left:
+                            logger.info(f"Канал {channel} найден, но мы не участник. Готовимся к вступлению.")
+                            entity = None # Сброс заставит сработать следующий блок
+                            
+                    except Exception:
+                        # Если канал не найден (например, приватный по ID) — не страшно.
+                        # entity останется None, и мы перейдем к блоку вступления.
+                        pass
+
+                    # -----------------------------------------------------------------
+                    # ЭТАП 2: ВСТУПЛЕНИЕ, ЕСЛИ КАНАЛ НЕ НАЙДЕН ИЛИ МЫ НЕ В НЕМ
+                    # -----------------------------------------------------------------
+                    if not entity:
+                        logger.info(f"Не удалось получить быстрый доступ к {channel}. Запускаю процедуру вступления...")
+                        # А) Ссылка-приглашение (Приватный)
+                        if isinstance(channel, str) and ("t.me/+" in channel or "joinchat/" in channel or channel.startswith('+')):
+                            hash_match = re.search(r'(?:\+|joinchat/)([\w-]+)', channel)
+                            if hash_match:
+                                try:
+                                    updates = await self.client(ImportChatInviteRequest(hash_match.group(1)))
+                                    if updates and hasattr(updates, 'chats') and updates.chats:
+                                        entity = updates.chats[0]
+                                    await asyncio.sleep(2)
+                                except UserAlreadyParticipantError: pass
+                                except Exception as e: logger.error(f"Не удалось вступить по инвайту {channel}: {e}")
+
+                        # Б) Юзернейм (Публичный)
+                        elif isinstance(channel, str) and ("t.me/" in channel or channel.startswith('@')):
+                            username = channel.split('/')[-1].replace('@', '')
+                            try:
+                                await self.client(JoinChannelRequest(username))
+                                await asyncio.sleep(2)
+                            except UserAlreadyParticipantError: pass
+                            except Exception as e: logger.warning(f"Не удалось вступить в @{username}: {e}")
+                        
+                        # После попытки вступления, снова получаем entity. Теперь он должен найтись.
+                        try:
+                            if not entity:
+                                target = channel
+                                if isinstance(channel, str) and channel.startswith('+'):
+                                    target = f"https://t.me/{channel}"
+                                entity = await self.client.get_entity(target)
+                        except Exception as e:
+                            logger.error(f"Даже после вступления не удалось найти {channel}: {e}")
+                    
+                    # Если после всех попыток entity нет — сдаемся
+                    if not entity:
+                        logger.error(f"⛔ Пропускаем канал {channel}: не удалось получить доступ.")
+                        break
+
+                    # ---------------------------------------------------------
+                    # ЭТАП 3: ПАРСИНГ СООБЩЕНИЙ
+                    # ---------------------------------------------------------
+                    # ✅ ИЗМЕНЕНИЕ 2: ЧИНИМ РАБОТУ КОМАНДЫ /run
+                    if hours is not None:
+                        # Если запуск ручной (через /run или кнопку) — игнорируем чекпоинты
+                        offset_date = datetime.now(timezone.utc) - timedelta(hours=hours)
+                    else:
+                        # Если запуск автоматический — используем чекпоинты
+                        offset_date = since
+
+                    kwargs = {"limit": 100, "reverse": True, "offset_date": offset_date}
+                    if last_id > 0:
+                        kwargs["offset_id"] = last_id
+                    
+                    async for message in self.client.iter_messages(entity, **kwargs):
+                        last_id = message.id
+                        
+                        if not message.date: continue
+                        
+                        msg_date = message.date
+                        if msg_date.tzinfo is None:
+                            msg_date = msg_date.replace(tzinfo=timezone.utc)
+
+                        m_type = None
+                        if message.photo: m_type = "photo"
+                        elif message.video: m_type = "video"
+                        elif message.voice: m_type = "voice"
+                        elif message.audio: m_type = "audio"
+                        elif message.document: m_type = "document"
+
+                        if message.text or m_type:
+                            source_id = getattr(entity, 'id', channel)
+                            formatted_text = html.unparse(message.text, message.entities) if message.text else ""
+
+                            yield CollectedMessage(
+                                source=str(source_id),
+                                text=message.text or "",
+                                fmt_text=formatted_text,
+                                created_at=msg_date,
+                                media_group_id=str(message.grouped_id) if message.grouped_id else None,
+                                message_id=message.id,
+                                media_type=m_type
+                            )
+                    
+                    break # Успех
+                    
+                except FloodWaitError as exc:
+                    retries += 1
+                    wait_time = exc.seconds + 5
+                    if wait_time > 300:
+                        logger.error(f"FloodWait слишком долгий ({wait_time}с), пропускаем {channel}")
+                        break
+                    logger.warning(f"FloodWait на {channel}, ждем {wait_time} сек...")
+                    await asyncio.sleep(wait_time)
+                    
+                except Exception as e:
+                    retries += 1
+                    logger.exception(f"Ошибка при обработке {channel}, попытка {retries}/3: {e}")
+                    await asyncio.sleep(2)
+
+    async def publish(self, channel: str, text: str) -> None:
+        """
+        Базовый метод публикации (используется как запасной).
+        Основная логика красивой публикации находится в ProcessingService.
+        """
+        for attempt in range(1, 4):
+            try:
+                target_entity = int(channel) if isinstance(channel, str) and channel.lstrip('-').isdigit() else channel
+                await self.client.send_message(
+                    entity=target_entity, 
+                    message=text, 
+                    parse_mode='html', 
+                    link_preview=False
+                )
+                return
+            except FloodWaitError as exc:
+                if exc.seconds > 300:
+                    logger.error("Publish FloodWait too long (%s sec), aborting", exc.seconds)
+                    return
+                await asyncio.sleep(exc.seconds)
+            except Exception:
+                logger.exception("Unexpected error during simple publish to %s", channel)
+                await asyncio.sleep(2)
+
+==================================================
+
+FILE: app\collector\__init__.py
+--------------------------------------------------
+
+
+==================================================
+
+FILE: app\miniapp\index.html
+--------------------------------------------------
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AI News Intelligence 2.0</title>
+  
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  
+  <style>
+    :root {
+      /* Используем нативные цвета Telegram для бесшовного дизайна */
+      --bg-color: var(--tg-theme-bg-color, #ffffff);
+      --secondary-bg: var(--tg-theme-secondary-bg-color, #f3f4f6);
+      --text-color: var(--tg-theme-text-color, #000000);
+      --hint-color: var(--tg-theme-hint-color, #8e8e93);
+      --button-color: var(--tg-theme-button-color, #3390ec);
+      --button-text: var(--tg-theme-button-text-color, #ffffff);
+      --danger-color: #ff3b30;
+      --success-color: #34c759;
+      --accent-color: #6f8cff;
+    }
+
+    * { 
+      box-sizing: border-box; 
+      -webkit-tap-highlight-color: transparent; 
+    }
+    
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--secondary-bg);
+      color: var(--text-color);
+      padding-bottom: 100px; /* Место под нижнее меню навигации */
+      overflow-x: hidden;
+    }
+
+    /* --- СТРАНИЦЫ (ВКЛАДКИ) --- */
+    .page { 
+      display: none; 
+      padding: 16px; 
+      animation: fadeIn 0.2s ease-out; 
+    }
+    .page.active { 
+      display: block; 
+    }
+    @keyframes fadeIn { 
+      from { opacity: 0; transform: translateY(5px); } 
+      to { opacity: 1; transform: translateY(0); } 
+    }
+
+    /* --- ШАПКА --- */
+    .header { 
+      padding: 16px 16px 8px 16px; 
+      background: var(--bg-color); 
+      border-bottom: 1px solid rgba(0,0,0,0.05); 
+    }
+    .header h1 { 
+      margin: 0; 
+      font-size: 20px; 
+      font-weight: 800; 
+    }
+    .header p { 
+      margin: 4px 0 0 0; 
+      font-size: 13px; 
+      color: var(--hint-color); 
+    }
+
+    /* --- КАРТОЧКИ --- */
+    .card {
+      background: var(--bg-color);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      border: 1px solid rgba(0,0,0,0.02);
+    }
+    .grid-2 { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr; 
+      gap: 12px; 
+    }
+    
+    /* --- КНОПКИ --- */
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn:active { opacity: 0.7; }
+    .btn-primary { background: var(--button-color); color: var(--button-text); }
+    .btn-secondary { background: var(--secondary-bg); color: var(--button-color); }
+    .btn-danger { background: rgba(255, 59, 48, 0.1); color: var(--danger-color); }
+    .btn-success { background: var(--success-color); color: #fff; }
+    .btn-small { padding: 8px 12px; font-size: 12px; width: auto; }
+
+    /* --- ЭЛЕМЕНТЫ ВВОДА (ИНПУТЫ) --- */
+    input, textarea {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,0,0,0.1);
+      background: var(--secondary-bg);
+      color: var(--text-color);
+      font-size: 14px;
+      margin-bottom: 12px;
+      outline: none;
+      font-family: inherit;
+    }
+    input:focus, textarea:focus { 
+      border-color: var(--button-color); 
+    }
+    textarea { 
+      resize: vertical; 
+      min-height: 120px; 
+    }
+
+    /* --- НИЖНЕЕ МЕНЮ НАВИГАЦИИ --- */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0; 
+      left: 0; 
+      right: 0;
+      background: var(--bg-color);
+      display: flex;
+      justify-content: space-around;
+      padding: 10px 0 25px 0;
+      border-top: 1px solid rgba(0,0,0,0.08);
+      z-index: 1000;
+    }
+    .nav-item {
+      background: none; 
+      border: none;
+      color: var(--hint-color);
+      font-size: 10px;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      flex: 1;
+      cursor: pointer;
+    }
+    .nav-item.active { color: var(--button-color); }
+    .nav-item svg { width: 24px; height: 24px; fill: currentColor; }
+
+    /* --- СПЕЦ-ЭЛЕМЕНТЫ --- */
+    .chip { 
+      display: inline-block; 
+      padding: 4px 8px; 
+      border-radius: 6px; 
+      font-size: 11px; 
+      font-weight: 700; 
+      background: var(--secondary-bg); 
+    }
+    .chip-success { background: rgba(52, 199, 89, 0.15); color: var(--success-color); }
+    .chip-warn { background: rgba(255, 159, 10, 0.15); color: #ff9f0a; }
+    .mono { font-family: ui-monospace, monospace; font-size: 12px; }
+    
+    /* --- МОДАЛЬНЫЕ ОКНА --- */
+    .modal {
+      position: fixed; 
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6);
+      display: none; 
+      align-items: flex-end; 
+      z-index: 2000;
+    }
+    .modal.active { display: flex; }
+    .modal-content {
+      background: var(--bg-color);
+      width: 100%;
+      border-radius: 24px 24px 0 0;
+      padding: 24px 20px 40px 20px;
+      animation: slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    @keyframes slideUp { 
+      from { transform: translateY(100%); } 
+      to { transform: translateY(0); } 
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <h1 id="headerTitle">Дашборд</h1>
+    <p id="headerSubtitle">Управление AI Агрегатором</p>
+  </header>
+
+  <main>
+    <section id="dashboard" class="page active">
+      <div class="grid-2">
+        <div class="card">
+          <div style="font-size: 24px; font-weight: 800; color: var(--button-color);" id="mTotal">0</div>
+          <div style="font-size: 12px; color: var(--hint-color);">Собрано сегодня</div>
+        </div>
+        <div class="card">
+          <div style="font-size: 24px; font-weight: 800; color: var(--success-color);" id="mPub">0</div>
+          <div style="font-size: 12px; color: var(--hint-color);">Опубликовано</div>
+        </div>
+      </div>
+      
+      <button class="btn btn-primary" id="quickRunBtn">⚡ Запустить сканирование</button>
+      
+      <div class="card" style="margin-top: 12px;">
+        <div style="font-weight: 700; margin-bottom: 10px; font-size: 14px;">Статус системы</div>
+        <div id="healthDump" class="mono" style="margin:0; color: var(--hint-color); font-family: inherit; font-size: 13px;">Загрузка...</div>
+      </div>
+    </section>
+
+    <section id="sources" class="page">
+      <input id="searchSources" placeholder="Поиск по каналам..." style="margin-bottom: 12px;" />
+      <button class="btn btn-secondary" onclick="openModal('addSourceModal')" style="margin-bottom: 16px;">➕ Добавить источник</button>
+      <div id="sourcesList"></div>
+    </section>
+
+    <section id="filters" class="page">
+      <div class="card">
+        <div style="font-weight: 700; margin-bottom: 12px;">Новое стоп-слово</div>
+        <input id="newKeyword" placeholder="Например: казино, реклама" />
+        <button class="btn btn-primary" id="addKeywordBtn">Добавить в фильтр</button>
+      </div>
+      <div id="keywordsList"></div>
+    </section>
+
+    <section id="messages" class="page">
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <input id="msgTag" placeholder="Поиск по тегу или тексту..." style="margin-bottom:0" />
+        <button class="btn btn-secondary" id="reloadMessagesBtn" style="width: 50px; margin-bottom:0">🔄</button>
+      </div>
+      <div id="messagesList"></div>
+    </section>
+
+    <section id="settings" class="page">
+      <div class="card">
+        <div style="font-weight: 700; margin-bottom: 16px;">Настройки ИИ и Дублей</div>
+        
+        <label class="mono" style="display:block; margin-bottom:4px; font-size: 11px;">Порог дедупликации (0.0 - 1.0)</label>
+        <input id="sThreshold" type="number" step="0.01" placeholder="0.80" />
+
+        <label class="mono" style="display:block; margin-bottom:4px; font-size: 11px;">Окно дедупликации (в днях)</label>
+        <input id="sWindow" type="number" placeholder="14" />
+
+        <label class="mono" style="display:block; margin-bottom:4px; font-size: 11px;">Лимит длины текста ИИ (символов)</label>
+        <input id="sMaxChars" type="number" placeholder="1800" />
+        
+        <label class="mono" style="display:block; margin-bottom:4px; font-size: 11px;">Размер батча (сообщений)</label>
+        <input id="sBatch" type="number" placeholder="500" />
+        
+        <label class="mono" style="display:block; margin-top:8px; margin-bottom:4px; font-size: 11px;">Системный Промпт ИИ</label>
+        <textarea id="sPrompt" placeholder="Опиши ИИ, как нужно писать новости..."></textarea>
+        
+        <button class="btn btn-primary" id="saveSettingsBtn">💾 Сохранить всё</button>
+      </div>
+      
+      <button class="btn btn-danger" id="clearCacheBtn" style="margin-bottom: 20px;">Очистить и пересобрать индекс FAISS</button>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-page="dashboard" data-title="Дашборд">
+      <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>Главная
+    </button>
+    <button class="nav-item" data-page="sources" data-title="Источники">
+      <svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>Каналы
+    </button>
+    <button class="nav-item" data-page="filters" data-title="Фильтры">
+      <svg viewBox="0 0 24 24"><path d="M19.77 4.93l1.4 1.4L13.41 14l7.76 7.76-1.41 1.41L12 15.41l-7.76 7.76-1.41-1.41L10.59 14 2.83 6.24l1.41-1.41L12 12.59l7.77-7.66z"/></svg>Фильтры
+    </button>
+    <button class="nav-item" data-page="messages" data-title="База постов">
+      <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>Посты
+    </button>
+    <button class="nav-item" data-page="settings" data-title="Настройки">
+      <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7-3.2c0-.3 0-.7-.1-1l2.1-1.6c.2-.2.2-.4.1-.6l-2-3.5c-.1-.2-.4-.2-.6-.1l-2.5 1c-.5-.4-1-.7-1.6-1l-.4-2.6c0-.2-.2-.4-.5-.4h-4c-.3 0-.5.2-.5.4l-.4 2.6c-.6.3-1.1.6-1.6 1l-2.5-1c-.2-.1-.5 0-.6.1l-2 3.5c-.1.2-.1.4-.1-.6l-2.1-1.6z"/></svg>Опции
+    </button>
+  </nav>
+
+  <div class="modal" id="addSourceModal">
+    <div class="modal-content">
+      <h3 style="margin-top:0">Новый источник</h3>
+      <input id="sourceChannel" placeholder="@username или ссылка" />
+      <input id="sourceTitle" placeholder="Название канала (для красоты)" /> <input id="sourceTopic" type="number" placeholder="ID Ветки (пусто = Общая лента)" />
+      <div class="grid-2">
+        <button class="btn btn-secondary" onclick="closeModal('addSourceModal')">Отмена</button>
+        <button class="btn btn-primary" id="saveSourceBtn">Добавить</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/miniapp/app.js"></script>
+  
+  <script>
+    // Вспомогательная логика для UI (переключение вкладок)
+    document.querySelectorAll('.nav-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Убираем класс active у всех кнопок и страниц
+        document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        
+        // Добавляем класс active выбранной кнопке и странице
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.page).classList.add('active');
+        
+        // Меняем заголовок в шапке
+        document.getElementById('headerTitle').innerText = btn.dataset.title;
+        
+        // Скроллим наверх
+        window.scrollTo(0,0);
+      });
+    });
+
+    // Управление модалкой
+    function openModal(id) { document.getElementById(id).classList.add('active'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+    
+    // Применение цветов Telegram к фону страницы
+    if (window.Telegram && window.Telegram.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
+      
+      try {
+        if (tg.backgroundColor) {
+          tg.setHeaderColor(tg.backgroundColor);
+        }
+      } catch (e) {
+        console.warn("Не удалось установить цвет шапки", e);
+      }
+    }
+  </script>
+</body>
+</html>
+
+==================================================
+
+FILE: app\utils\logger.py
+--------------------------------------------------
+"""Centralized logger setup."""
+from __future__ import annotations
+
+import logging
+import sys
+import os
+from logging.handlers import RotatingFileHandler
+
+
+def setup_logger(level: str = "INFO") -> None:
+    """Configure root logger for structured console and file output (Black Box)."""
+    
+    # Создаем директорию для логов (наш "черный ящик"), если её нет
+    log_dir = "logs"
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Расширенный формат логов: Дата | Уровень | Файл:Строка | Сообщение
+    formatter = logging.Formatter(
+        fmt="%(asctime)s [%(levelname)s] %(name)s:%(lineno)d - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+
+    # 1. Хэндлер для вывода в консоль (Docker logs)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    console_handler.setLevel(level.upper())
+
+    # 2. Хэндлер для "Черного ящика" (запись в файл blackbox.log)
+    # Максимум 10 МБ на файл, храним 5 последних файлов (итого 50 МБ истории)
+    file_handler = RotatingFileHandler(
+        filename=os.path.join(log_dir, "blackbox.log"),
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8"
+    )
+    file_handler.setFormatter(formatter)
+    # В черный ящик пишем всё максимально подробно (DEBUG), 
+    # даже если в консоль выводим только INFO
+    file_handler.setLevel(logging.DEBUG)
+
+    # Настраиваем корневой логгер
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG) # Опускаем базу до DEBUG, чтобы file_handler получал всё
+    
+    # Очищаем старые хэндлеры, чтобы не было дублей при перезапуске (например, в uvicorn)
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+        
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
+    
+    # --- Фильтрация стороннего шума ---
+    # Эти библиотеки очень разговорчивые, затыкаем их до уровня WARNING, 
+    # чтобы они не засоряли наш черный ящик
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("telethon").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+
+==================================================
+
+FILE: app\utils\__init__.py
+--------------------------------------------------
+
+
+==================================================
+

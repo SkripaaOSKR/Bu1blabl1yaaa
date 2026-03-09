@@ -27,8 +27,23 @@ class Settings(BaseSettings):
     telegram_api_id: int = 0
     telegram_api_hash: str = ""
     telegram_session_name: str = "aggregator"
+    telegram_string_session: str = ""
     telegram_publish_channel: str = ""
     telegram_bot_token: str = ""
+
+    # --- НОВЫЕ НАСТРОЙКИ ДЛЯ ИИ И КАРАНТИНА ---
+    groq_api_key: str = ""
+    telegram_spam_topic_id: int | None = None
+    # ------------------------------------------
+    
+    # --- ОБЛАЧНЫЙ ЧЕРНЫЙ ЯЩИК (SENTRY) ---
+    sentry_dsn: str | None = None
+    # ------------------------------------------
+
+    # --- ФАЗА 2: ОЧЕРЕДИ ЗАДАЧ (REDIS) ---
+    # По умолчанию подключаемся к контейнеру 'redis' из docker-compose
+    redis_url: str = "redis://redis:6379/0"
+    # ------------------------------------------
 
     telegram_sources: str = ""
     admin_user_ids: str = ""
@@ -49,11 +64,11 @@ class Settings(BaseSettings):
 
     postgres_dsn: str = "postgresql+asyncpg://news:news@postgres:5432/news"
 
-    miniapp_base_url: str = "https://example.com/miniapp"
+    miniapp_base_url: str = "http://localhost:8000/miniapp"
 
     @property
     def sources(self) -> list[str]:
-        return [item.strip() for item in self.telegram_sources.split(",") if item.strip()]
+        return[item.strip() for item in self.telegram_sources.split(",") if item.strip()]
 
     @property
     def admin_ids(self) -> set[int]:

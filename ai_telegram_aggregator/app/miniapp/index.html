@@ -2,253 +2,340 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI News Intelligence Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AI News Intelligence 2.0</title>
+  
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  
   <style>
     :root {
-      --bg: #0f1220;
-      --bg-alt: #161a2e;
-      --panel: #1e233d;
-      --panel-2: #252b48;
-      --text: #e7eaf6;
-      --muted: #9ea7c3;
-      --accent: #6f8cff;
-      --danger: #ff6b81;
-      --ok: #4cd38a;
-      --border: #2f365a;
+      /* Используем нативные цвета Telegram для бесшовного дизайна */
+      --bg-color: var(--tg-theme-bg-color, #ffffff);
+      --secondary-bg: var(--tg-theme-secondary-bg-color, #f3f4f6);
+      --text-color: var(--tg-theme-text-color, #000000);
+      --hint-color: var(--tg-theme-hint-color, #8e8e93);
+      --button-color: var(--tg-theme-button-color, #3390ec);
+      --button-text: var(--tg-theme-button-text-color, #ffffff);
+      --danger-color: #ff3b30;
+      --success-color: #34c759;
+      --accent-color: #6f8cff;
     }
 
-    * { box-sizing: border-box; }
+    * { 
+      box-sizing: border-box; 
+      -webkit-tap-highlight-color: transparent; 
+    }
+    
     body {
       margin: 0;
-      font-family: Inter, Segoe UI, Roboto, system-ui, sans-serif;
-      color: var(--text);
-      background: radial-gradient(circle at top right, #1b2250, #0c0f1d 45%);
-      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--secondary-bg);
+      color: var(--text-color);
+      padding-bottom: 100px; /* Место под нижнее меню навигации */
+      overflow-x: hidden;
     }
 
-    .layout {
-      display: grid;
-      grid-template-columns: 260px 1fr;
-      min-height: 100vh;
+    /* --- СТРАНИЦЫ (ВКЛАДКИ) --- */
+    .page { 
+      display: none; 
+      padding: 16px; 
+      animation: fadeIn 0.2s ease-out; 
+    }
+    .page.active { 
+      display: block; 
+    }
+    @keyframes fadeIn { 
+      from { opacity: 0; transform: translateY(5px); } 
+      to { opacity: 1; transform: translateY(0); } 
     }
 
-    .sidebar {
-      background: rgba(14, 18, 33, 0.92);
-      border-right: 1px solid var(--border);
-      padding: 24px 16px;
-      position: sticky;
-      top: 0;
-      height: 100vh;
+    /* --- ШАПКА --- */
+    .header { 
+      padding: 16px 16px 8px 16px; 
+      background: var(--bg-color); 
+      border-bottom: 1px solid rgba(0,0,0,0.05); 
+    }
+    .header h1 { 
+      margin: 0; 
+      font-size: 20px; 
+      font-weight: 800; 
+    }
+    .header p { 
+      margin: 4px 0 0 0; 
+      font-size: 13px; 
+      color: var(--hint-color); 
     }
 
-    .brand {
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 20px;
-    }
-
-    .brand small { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
-
-    .nav { display: flex; flex-direction: column; gap: 8px; }
-    .nav button {
-      width: 100%;
-      text-align: left;
-      background: transparent;
-      border: 1px solid transparent;
-      color: var(--text);
-      border-radius: 10px;
-      padding: 10px 12px;
-      cursor: pointer;
-      font-weight: 600;
-      transition: .2s ease;
-    }
-
-    .nav button:hover,
-    .nav button.active {
-      background: var(--panel);
-      border-color: var(--border);
-    }
-
-    .content { padding: 24px; }
-    .page { display: none; }
-    .page.active { display: block; }
-
-    h2 { margin-top: 0; font-size: 24px; }
-    p.subtitle { margin-top: -8px; color: var(--muted); }
-
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(140px, 1fr));
-      gap: 12px;
-      margin-bottom: 16px;
-    }
-
+    /* --- КАРТОЧКИ --- */
     .card {
-      background: linear-gradient(160deg, var(--panel), var(--panel-2));
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 14px;
-    }
-
-    .card .label { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
-    .card .value { font-size: 22px; font-weight: 700; }
-
-    .toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
+      background: var(--bg-color);
+      border-radius: 14px;
+      padding: 16px;
       margin-bottom: 12px;
-      align-items: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      border: 1px solid rgba(0,0,0,0.02);
     }
-
-    input, select, textarea {
-      background: #11162d;
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 10px;
-      border-radius: 10px;
-      min-width: 140px;
+    .grid-2 { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr; 
+      gap: 12px; 
     }
-
-    button.action {
-      background: var(--accent);
-      color: #fff;
+    
+    /* --- КНОПКИ --- */
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
       border: none;
-      border-radius: 10px;
-      padding: 10px 14px;
+      font-weight: 700;
+      font-size: 15px;
       cursor: pointer;
-      font-weight: 700;
+      transition: opacity 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn:active { opacity: 0.7; }
+    .btn-primary { background: var(--button-color); color: var(--button-text); }
+    .btn-secondary { background: var(--secondary-bg); color: var(--button-color); }
+    .btn-danger { background: rgba(255, 59, 48, 0.1); color: var(--danger-color); }
+    .btn-success { background: var(--success-color); color: #fff; }
+    .btn-small { padding: 8px 12px; font-size: 12px; width: auto; }
+
+    /* --- ЭЛЕМЕНТЫ ВВОДА (ИНПУТЫ) --- */
+    input, textarea {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,0,0,0.1);
+      background: var(--secondary-bg);
+      color: var(--text-color);
+      font-size: 14px;
+      margin-bottom: 12px;
+      outline: none;
+      font-family: inherit;
+    }
+    input:focus, textarea:focus { 
+      border-color: var(--button-color); 
+    }
+    textarea { 
+      resize: vertical; 
+      min-height: 120px; 
     }
 
-    button.action.ghost { background: #2a3154; }
-    button.action.danger { background: var(--danger); }
-
-    .table-wrap {
-      overflow: auto;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: rgba(20, 24, 42, 0.8);
+    /* --- НИЖНЕЕ МЕНЮ НАВИГАЦИИ --- */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0; 
+      left: 0; 
+      right: 0;
+      background: var(--bg-color);
+      display: flex;
+      justify-content: space-around;
+      padding: 10px 0 25px 0;
+      border-top: 1px solid rgba(0,0,0,0.08);
+      z-index: 1000;
     }
-
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 10px 12px; border-bottom: 1px solid #2a3155; font-size: 13px; }
-    th { color: var(--muted); text-align: left; background: #161c35; position: sticky; top: 0; }
-
-    .chip {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 700;
-      background: #2b345d;
+    .nav-item {
+      background: none; 
+      border: none;
+      color: var(--hint-color);
+      font-size: 10px;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      flex: 1;
+      cursor: pointer;
     }
+    .nav-item.active { color: var(--button-color); }
+    .nav-item svg { width: 24px; height: 24px; fill: currentColor; }
 
-    .status-ok { color: var(--ok); }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-
-    pre {
-      background: #11162d;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 10px;
-      overflow: auto;
+    /* --- СПЕЦ-ЭЛЕМЕНТЫ --- */
+    .chip { 
+      display: inline-block; 
+      padding: 4px 8px; 
+      border-radius: 6px; 
+      font-size: 11px; 
+      font-weight: 700; 
+      background: var(--secondary-bg); 
     }
-
-    @media (max-width: 960px) {
-      .layout { grid-template-columns: 1fr; }
-      .sidebar {
-        height: auto;
-        position: static;
-        border-right: none;
-        border-bottom: 1px solid var(--border);
-      }
-      .cards { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+    .chip-success { background: rgba(52, 199, 89, 0.15); color: var(--success-color); }
+    .chip-warn { background: rgba(255, 159, 10, 0.15); color: #ff9f0a; }
+    .mono { font-family: ui-monospace, monospace; font-size: 12px; }
+    
+    /* --- МОДАЛЬНЫЕ ОКНА --- */
+    .modal {
+      position: fixed; 
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6);
+      display: none; 
+      align-items: flex-end; 
+      z-index: 2000;
+    }
+    .modal.active { display: flex; }
+    .modal-content {
+      background: var(--bg-color);
+      width: 100%;
+      border-radius: 24px 24px 0 0;
+      padding: 24px 20px 40px 20px;
+      animation: slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    @keyframes slideUp { 
+      from { transform: translateY(100%); } 
+      to { transform: translateY(0); } 
     }
   </style>
 </head>
 <body>
-  <div class="layout">
-    <aside class="sidebar">
-      <div class="brand">AI News Intelligence<small>Telegram Admin Panel</small></div>
-      <div class="nav">
-        <button data-page="dashboard" class="active">Dashboard</button>
-        <button data-page="sources">Sources</button>
-        <button data-page="messages">Messages</button>
-        <button data-page="tags">Tags</button>
-        <button data-page="search">Search</button>
-        <button data-page="settings">Settings</button>
+
+  <header class="header">
+    <h1 id="headerTitle">Дашборд</h1>
+    <p id="headerSubtitle">Управление AI Агрегатором</p>
+  </header>
+
+  <main>
+    <section id="dashboard" class="page active">
+      <div class="grid-2">
+        <div class="card">
+          <div style="font-size: 24px; font-weight: 800; color: var(--button-color);" id="mTotal">0</div>
+          <div style="font-size: 12px; color: var(--hint-color);">Собрано сегодня</div>
+        </div>
+        <div class="card">
+          <div style="font-size: 24px; font-weight: 800; color: var(--success-color);" id="mPub">0</div>
+          <div style="font-size: 12px; color: var(--hint-color);">Опубликовано</div>
+        </div>
       </div>
-    </aside>
+      
+      <button class="btn btn-primary" id="quickRunBtn">⚡ Запустить сканирование</button>
+      
+      <div class="card" style="margin-top: 12px;">
+        <div style="font-weight: 700; margin-bottom: 10px; font-size: 14px;">Статус системы</div>
+        <div id="healthDump" class="mono" style="margin:0; color: var(--hint-color); font-family: inherit; font-size: 13px;">Загрузка...</div>
+      </div>
+    </section>
 
-    <main class="content">
-      <section id="dashboard" class="page active">
-        <h2>Dashboard</h2>
-        <p class="subtitle">System overview and processing health</p>
-        <div class="cards">
-          <div class="card"><div class="label">Total Messages</div><div class="value" id="mTotal">0</div></div>
-          <div class="card"><div class="label">Duplicates</div><div class="value" id="mDup">0</div></div>
-          <div class="card"><div class="label">Published</div><div class="value" id="mPub">0</div></div>
-          <div class="card"><div class="label">Sources</div><div class="value" id="mSrc">0</div></div>
-        </div>
-        <pre id="healthDump" class="mono"></pre>
-      </section>
+    <section id="sources" class="page">
+      <input id="searchSources" placeholder="Поиск по каналам..." style="margin-bottom: 12px;" />
+      <button class="btn btn-secondary" onclick="openModal('addSourceModal')" style="margin-bottom: 16px;">➕ Добавить источник</button>
+      <div id="sourcesList"></div>
+    </section>
 
-      <section id="sources" class="page">
-        <h2>Sources</h2>
-        <div class="toolbar">
-          <input id="sourceChannel" placeholder="@channel" />
-          <input id="sourcePriority" type="number" value="100" />
-          <button class="action" id="addSourceBtn">Add Source</button>
-          <button class="action ghost" id="reloadSourcesBtn">Reload</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>ID</th><th>Channel</th><th>Active</th><th>Priority</th><th>Total</th><th>Published</th></tr></thead><tbody id="sourcesBody"></tbody></table></div>
-      </section>
+    <section id="filters" class="page">
+      <div class="card">
+        <div style="font-weight: 700; margin-bottom: 12px;">Новое стоп-слово</div>
+        <input id="newKeyword" placeholder="Например: казино, реклама" />
+        <button class="btn btn-primary" id="addKeywordBtn">Добавить в фильтр</button>
+      </div>
+      <div id="keywordsList"></div>
+    </section>
 
-      <section id="messages" class="page">
-        <h2>Messages</h2>
-        <div class="toolbar">
-          <input id="msgTag" placeholder="tag filter" />
-          <button class="action ghost" id="reloadMessagesBtn">Reload</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>ID</th><th>Source</th><th>Created</th><th>Duplicate</th><th>Published</th><th>Text</th></tr></thead><tbody id="messagesBody"></tbody></table></div>
-      </section>
+    <section id="messages" class="page">
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <input id="msgTag" placeholder="Поиск по тегу или тексту..." style="margin-bottom:0" />
+        <button class="btn btn-secondary" id="reloadMessagesBtn" style="width: 50px; margin-bottom:0">🔄</button>
+      </div>
+      <div id="messagesList"></div>
+    </section>
 
-      <section id="tags" class="page">
-        <h2>Tags</h2>
-        <div class="toolbar">
-          <input id="tagName" placeholder="tag" />
-          <button class="action" id="allowTagBtn">Allow</button>
-          <button class="action danger" id="blockTagBtn">Block</button>
-          <button class="action ghost" id="reloadTagsBtn">Reload</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>Name</th><th>Allowed</th><th>Blocked</th><th>Usage</th></tr></thead><tbody id="tagsBody"></tbody></table></div>
-      </section>
+    <section id="settings" class="page">
+      <div class="card">
+        <div style="font-weight: 700; margin-bottom: 16px;">Настройки ИИ и Дублей</div>
+        
+        <label class="mono" style="display:block; margin-bottom:4px; font-size: 11px;">Порог дедупликации (0.0 - 1.0)</label>
+        <input id="sThreshold" type="number" step="0.01" placeholder="0.80" />
 
-      <section id="search" class="page">
-        <h2>Semantic Search</h2>
-        <div class="toolbar">
-          <input id="searchQuery" placeholder="Type query" style="min-width:300px" />
-          <input id="searchLimit" type="number" value="20" />
-          <button class="action" id="runSearchBtn">Search</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>ID</th><th>Similarity</th><th>Created</th><th>Text</th></tr></thead><tbody id="searchBody"></tbody></table></div>
-      </section>
+        <label class="mono" style="display:block; margin-bottom:4px; font-size: 11px;">Окно дедупликации (в днях)</label>
+        <input id="sWindow" type="number" placeholder="14" />
 
-      <section id="settings" class="page">
-        <h2>Settings</h2>
-        <div class="toolbar">
-          <input id="sBatch" type="number" placeholder="batch size" />
-          <input id="sThreshold" type="number" step="0.01" placeholder="dedupe threshold" />
-          <input id="sWindow" type="number" placeholder="window days" />
-          <button class="action" id="saveSettingsBtn">Save</button>
-          <button class="action ghost" id="reloadSettingsBtn">Reload</button>
-        </div>
-        <pre id="settingsDump" class="mono"></pre>
-      </section>
-    </main>
+        <label class="mono" style="display:block; margin-bottom:4px; font-size: 11px;">Лимит длины текста ИИ (символов)</label>
+        <input id="sMaxChars" type="number" placeholder="1800" />
+        
+        <label class="mono" style="display:block; margin-bottom:4px; font-size: 11px;">Размер батча (сообщений)</label>
+        <input id="sBatch" type="number" placeholder="500" />
+        
+        <label class="mono" style="display:block; margin-top:8px; margin-bottom:4px; font-size: 11px;">Системный Промпт ИИ</label>
+        <textarea id="sPrompt" placeholder="Опиши ИИ, как нужно писать новости..."></textarea>
+        
+        <button class="btn btn-primary" id="saveSettingsBtn">💾 Сохранить всё</button>
+      </div>
+      
+      <button class="btn btn-danger" id="clearCacheBtn" style="margin-bottom: 20px;">Очистить и пересобрать индекс FAISS</button>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-page="dashboard" data-title="Дашборд">
+      <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>Главная
+    </button>
+    <button class="nav-item" data-page="sources" data-title="Источники">
+      <svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>Каналы
+    </button>
+    <button class="nav-item" data-page="filters" data-title="Фильтры">
+      <svg viewBox="0 0 24 24"><path d="M19.77 4.93l1.4 1.4L13.41 14l7.76 7.76-1.41 1.41L12 15.41l-7.76 7.76-1.41-1.41L10.59 14 2.83 6.24l1.41-1.41L12 12.59l7.77-7.66z"/></svg>Фильтры
+    </button>
+    <button class="nav-item" data-page="messages" data-title="База постов">
+      <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>Посты
+    </button>
+    <button class="nav-item" data-page="settings" data-title="Настройки">
+      <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7-3.2c0-.3 0-.7-.1-1l2.1-1.6c.2-.2.2-.4.1-.6l-2-3.5c-.1-.2-.4-.2-.6-.1l-2.5 1c-.5-.4-1-.7-1.6-1l-.4-2.6c0-.2-.2-.4-.5-.4h-4c-.3 0-.5.2-.5.4l-.4 2.6c-.6.3-1.1.6-1.6 1l-2.5-1c-.2-.1-.5 0-.6.1l-2 3.5c-.1.2-.1.4-.1-.6l-2.1-1.6z"/></svg>Опции
+    </button>
+  </nav>
+
+  <div class="modal" id="addSourceModal">
+    <div class="modal-content">
+      <h3 style="margin-top:0">Новый источник</h3>
+      <input id="sourceChannel" placeholder="@username или ссылка" />
+      <input id="sourceTitle" placeholder="Название канала (для красоты)" /> <input id="sourceTopic" type="number" placeholder="ID Ветки (пусто = Общая лента)" />
+      <div class="grid-2">
+        <button class="btn btn-secondary" onclick="closeModal('addSourceModal')">Отмена</button>
+        <button class="btn btn-primary" id="saveSourceBtn">Добавить</button>
+      </div>
+    </div>
   </div>
 
   <script src="/miniapp/app.js"></script>
+  
+  <script>
+    // Вспомогательная логика для UI (переключение вкладок)
+    document.querySelectorAll('.nav-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Убираем класс active у всех кнопок и страниц
+        document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        
+        // Добавляем класс active выбранной кнопке и странице
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.page).classList.add('active');
+        
+        // Меняем заголовок в шапке
+        document.getElementById('headerTitle').innerText = btn.dataset.title;
+        
+        // Скроллим наверх
+        window.scrollTo(0,0);
+      });
+    });
+
+    // Управление модалкой
+    function openModal(id) { document.getElementById(id).classList.add('active'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+    
+    // Применение цветов Telegram к фону страницы
+    if (window.Telegram && window.Telegram.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
+      
+      try {
+        if (tg.backgroundColor) {
+          tg.setHeaderColor(tg.backgroundColor);
+        }
+      } catch (e) {
+        console.warn("Не удалось установить цвет шапки", e);
+      }
+    }
+  </script>
 </body>
 </html>

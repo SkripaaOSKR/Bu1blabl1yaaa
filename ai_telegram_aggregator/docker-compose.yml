@@ -1,81 +1,106 @@
-version: '3.9'
+version: '3.8'
+
 services:
+  # 1. БАЗА ДАННЫХ
   postgres:
-    image: postgres:15
-    restart: always
+    image: postgres:15-alpine
+    container_name: ai_news_db
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: news
       POSTGRES_USER: news
       POSTGRES_PASSWORD: news
+      POSTGRES_DB: news
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # Внешние порты удалены. База полностью изолирована внутри Докера!
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U news -d news"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 5
 
+  # 2. БРОКЕР СООБЩЕНИЙ (Task Queue)
+  redis:
+    image: redis:7-alpine
+    container_name: ai_news_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # 3. API СЕРВЕР (FastAPI + Админка)
   api:
     build: .
-    restart: always
-    command: ["uvicorn", "app.api_server:app", "--host", "0.0.0.0", "--port", "8000"]
-    env_file:
-      - .env
-    environment:
-      POSTGRES_DSN: postgresql+asyncpg://news:news@postgres:5432/news
-      FAISS_INDEX_PATH: /data/faiss.index
-      ANALYTICS_PATH: /data/analytics.json
-      TELEGRAM_SESSION_NAME: /data/telegram/aggregator
-    depends_on:
-      postgres:
-        condition: service_healthy
+    container_name: ai_news_api
+    restart: unless-stopped
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
-    volumes:
-      - faiss_data:/data
-      - telegram_session:/data/telegram
-
-  worker:
-    build: .
-    restart: always
-    command: ["python", "-m", "app.worker"]
     env_file:
       - .env
-    environment:
-      POSTGRES_DSN: postgresql+asyncpg://news:news@postgres:5432/news
-      FAISS_INDEX_PATH: /data/faiss.index
-      ANALYTICS_PATH: /data/analytics.json
-      TELEGRAM_SESSION_NAME: /data/telegram/aggregator
+    volumes:
+      - ./data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - faiss_data:/data
-      - telegram_session:/data/telegram
+      redis:
+        condition: service_healthy
 
-  bot:
+  # 4. ФОНОВЫЙ ВОРКЕР (Только быстрый Сборщик)
+  collector:
     build: .
-    restart: always
-    command: ["python", "-m", "app.bot.bot_runner"]
+    container_name: ai_news_collector
+    restart: unless-stopped
+    command: python -m app.worker
     env_file:
       - .env
-    environment:
-      POSTGRES_DSN: postgresql+asyncpg://news:news@postgres:5432/news
-      FAISS_INDEX_PATH: /data/faiss.index
-      ANALYTICS_PATH: /data/analytics.json
-      TELEGRAM_SESSION_NAME: /data/telegram/aggregator
+    volumes:
+      - ./data:/app/data
     depends_on:
+      postgres:
+        condition: service_healthy
       api:
         condition: service_started
+
+  # 5. ИСПОЛНИТЕЛЬ TASKIQ (ИИ и Публикация)
+  ai_worker:
+    build: .
+    container_name: ai_news_taskiq
+    restart: unless-stopped
+    command: taskiq worker app.broker:broker app.tasks
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
       postgres:
         condition: service_healthy
+
+  # 6. TELEGRAM БОТ (Управление)
+  bot:
+    build: .
+    container_name: ai_news_bot
+    restart: unless-stopped
+    command: python -m app.bot.bot_runner
+    env_file:
+      - .env
     volumes:
-      - faiss_data:/data
-      - telegram_session:/data/telegram
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
 
 volumes:
   postgres_data:
-  faiss_data:
-  telegram_session:
+  redis_data:
